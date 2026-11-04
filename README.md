@@ -2,6 +2,16 @@
 
 En norsk nettapp for juleølsmaking med tre visninger: arrangør, deltaker og TV. Alle bruker samme server, og stemmer og resultater oppdateres automatisk.
 
+## WordPress / Datejust.no
+
+`wordpress/datejust-juleol/` inneholder en egen WordPress-versjon. Installer mappen som en plugin-ZIP og aktiver den. Appen vises på `/juleolsmaking/`, uten endringer i menyer, eksisterende sider eller tema. Den oppretter ingen sideoppføring i nettstedets vanlige sideoversikter eller standard sitemap, og sender `noindex`.
+
+Denne versjonen lagrer smakinger i WordPress-databasen og henter oppdateringer hvert 2,5 sekund (6 sekunder i bakgrunnsfaner). Den krever ingen separat Node-server. QR-koder genereres i nettleseren uten ekstern tjeneste. Arrangør- og deltakeradgang fungerer som beskrevet nedenfor.
+
+Arrangøren kan legge til et valgfritt bilde av hvert øl. På mobil brukes «Ta bilde» for å fotografere ølet med kameraet, eller «Velg bilde» for et eksisterende bilde. «Ta bilde» ber nettleseren om kameraet på baksiden; på PC kan knappen åpne vanlig filvalg. Bildet vises i øllisten, på poengsiden og i TV-visningen. Opplastingen gjør bildet mindre og konverterer det til JPEG i nettleseren. Bare arrangørtilgangen kan endre bilder.
+
+Kjør `node scripts/build-wordpress.mjs` for å oppdatere WordPress-grensesnittet fra `public/`. Kjør `php test/wordpress-domain.test.php` for test av tilgang, poeng, runder og datalagringsformat. GitHub Actions kontrollerer også PHP- og JavaScript-syntaksen. Se `wordpress/datejust-juleol/README.txt` for drift og lagring.
+
 ## Kom i gang
 
 Du trenger **Node.js 24**. Versjonen brukt under utvikling er angitt i `.nvmrc`.

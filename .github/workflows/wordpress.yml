@@ -1,0 +1,31 @@
+name: WordPress app checks
+on:
+  push:
+    paths:
+      - 'wordpress/**'
+      - 'test/wordpress-domain.test.php'
+      - 'test/wordpress-upload.test.php'
+      - 'scripts/build-wordpress.mjs'
+      - '.github/workflows/wordpress.yml'
+  pull_request:
+    paths:
+      - 'wordpress/**'
+      - 'test/wordpress-domain.test.php'
+      - 'test/wordpress-upload.test.php'
+      - 'scripts/build-wordpress.mjs'
+      - '.github/workflows/wordpress.yml'
+permissions:
+  contents: read
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate PHP syntax
+        run: find wordpress/datejust-juleol -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Test access, votes, rounds and persistence
+        run: php test/wordpress-domain.test.php
+      - name: Test authenticated photo uploads and validation
+        run: php test/wordpress-upload.test.php
+      - name: Validate frontend syntax
+        run: node --check wordpress/datejust-juleol/assets/app.js

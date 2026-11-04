@@ -90,11 +90,19 @@ replace('<div class="tasting-beer-icon">${icon(\'beer\')}</div>', '${beer.imageU
 replace('<div class="round-icon">${icon(\'beer\')}</div>', '<div class="round-icon">${active?.imageUrl ? beerPhoto(active, \'round-photo\') : icon(\'beer\')}</div>');
 replace('<section class="tv-current"><span', '<section class="tv-current">${beerPhoto(beer, \'tv-current-photo\')}<span');
 replace('<div class="beer-actions">', '<div class="beer-actions"><button class="button button-small button-outline image-upload" type="button" data-action="image-upload" data-id="${esc(beer.id)}" aria-label="${beer.imageUrl ? \'Bytt\' : \'Legg til\'} bilde av ${esc(beer.name)}" ${state.pending ? \'disabled\' : \'\'}>${beer.imageUrl ? \'Bytt bilde\' : \'Legg til bilde\'}</button>${beer.imageUrl ? `<button class="icon-button" type="button" data-action="image-remove" data-id="${esc(beer.id)}" aria-label="Fjern bilde av ${esc(beer.name)}">${icon(\'close\')}</button>` : \'\'}');
+replace('<div class="beer-actions">', '<div class="beer-actions"><button class="button button-small button-outline image-upload" type="button" data-action="image-camera" data-id="${esc(beer.id)}" aria-label="Ta bilde av ${esc(beer.name)}" ${state.pending ? \'disabled\' : \'\'}>Ta bilde</button>');
+replace("'Legg til'} bilde av", "'Velg'} bilde av");
+replace("'Legg til bilde'", "'Velg bilde'");
 replace("if (state.pending) return;\n  if (['open-round'", `if (state.pending) return;
-  if (action === 'image-upload') {
+  if (action === 'image-upload' || action === 'image-camera') {
     const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
+    if (action === 'image-camera') input.setAttribute('capture', 'environment');
+    input.className = 'sr-only'; input.tabIndex = -1;
+    input.setAttribute('aria-label', action === 'image-camera' ? 'Ta bilde av ølet' : 'Velg bilde av ølet');
+    document.body.append(input);
+    input.addEventListener('cancel', () => input.remove(), { once: true });
     input.addEventListener('change', async () => {
-      const file = input.files?.[0]; if (!file || state.pending) return;
+      const file = input.files?.[0]; input.remove(); if (!file || state.pending) return;
       state.pending = 'image'; render();
       try {
         const image = await smallBeerImage(file);

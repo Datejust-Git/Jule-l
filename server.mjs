@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, extname, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import QRCode from 'qrcode';
+import sharp from 'sharp';
 import { AppError, openStore } from './lib/store.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -14,29 +15,91 @@ function json(res, status, data) {
   res.end(body);
 }
 
-async function body(req) {
-  if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) {
-    throw new AppError(415, 'Send forespørselen som JSON.');
+async function rawBody(req, maxBytes, tooLarge) {
+  if (Number(req.headers['content-length']) > maxBytes) {
+    req.resume();
+    throw new AppError(413, tooLarge);
   }
-  const content = await new Promise((accept, reject) => {
+  return new Promise((accept, reject) => {
     let chunks = [];
     let size = 0;
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > 16_384) {
+      if (size > maxBytes) {
         chunks = [];
-        reject(new AppError(413, 'Forespørselen er for stor.'));
+        reject(new AppError(413, tooLarge));
       } else chunks.push(chunk);
     });
-    req.on('end', () => accept(Buffer.concat(chunks).toString('utf8')));
+    req.on('end', () => accept(Buffer.concat(chunks)));
+    req.on('aborted', () => reject(new AppError(400, 'Opplastingen ble avbrutt. Prøv igjen.')));
     req.on('error', reject);
   });
+}
+
+async function body(req) {
+  if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) {
+    throw new AppError(415, 'Send forespørselen som JSON.');
+  }
+  const content = (await rawBody(req, 16_384, 'Forespørselen er for stor.')).toString('utf8');
   try {
     const parsed = JSON.parse(content || '{}');
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
     return parsed;
   } catch {
     throw new AppError(400, 'Forespørselen inneholder ugyldig JSON.');
+  }
+}
+
+function imageFormat(data) {
+  if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return 'image/jpeg';
+  if (data.length >= 8 && data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
+  if (data.length >= 12 && data.toString('ascii', 0, 4) === 'RIFF' && data.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+
+function animatedImage(data, format) {
+  if (format === 'image/png') {
+    for (let offset = 8; offset + 12 <= data.length;) {
+      const length = data.readUInt32BE(offset);
+      if (data.toString('ascii', offset + 4, offset + 8) === 'acTL') return true;
+      offset += length + 12;
+    }
+  }
+  if (format === 'image/webp') {
+    for (let offset = 12; offset + 8 <= data.length;) {
+      const type = data.toString('ascii', offset, offset + 4);
+      const length = data.readUInt32LE(offset + 4);
+      if (type === 'ANIM' || type === 'ANMF') return true;
+      if (type === 'VP8X' && length >= 1 && offset + 8 < data.length && (data[offset + 8] & 2)) return true;
+      offset += 8 + length + (length % 2);
+    }
+  }
+  return false;
+}
+
+async function uploadedImage(req) {
+  const contentType = (req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase();
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+    req.resume();
+    throw new AppError(415, 'Velg et JPG-, PNG- eller WebP-bilde.');
+  }
+  const data = await rawBody(req, 10 * 1024 * 1024, 'Bildet er for stort. Velg et bilde på maks 10 MB.');
+  if (!data.length) throw new AppError(400, 'Bildefilen er tom. Velg et annet bilde.');
+  const format = imageFormat(data);
+  if (!format || format !== contentType) throw new AppError(415, 'Bildefilen må være et ekte JPG-, PNG- eller WebP-bilde.');
+  if (animatedImage(data, format)) throw new AppError(400, 'Velg et stillbilde. Animerte bilder støttes ikke.');
+  try {
+    const image = sharp(data, { limitInputPixels: 40_000_000, failOn: 'warning', sequentialRead: true });
+    const metadata = await image.metadata();
+    if ((metadata.pages || 1) > 1) throw new AppError(400, 'Velg et stillbilde. Animerte bilder støttes ikke.');
+    if (!metadata.width || !metadata.height || metadata.width * metadata.height > 40_000_000) {
+      throw new AppError(413, 'Bildet har for høy oppløsning. Velg et bilde med maks 40 megapiksler.');
+    }
+    return await image.rotate().resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    if (/pixel limit/i.test(error.message)) throw new AppError(413, 'Bildet har for høy oppløsning. Velg et bilde med maks 40 megapiksler.');
+    throw new AppError(400, 'Bildet kunne ikke leses. Prøv et annet JPG-, PNG- eller WebP-bilde.');
   }
 }
 
@@ -73,7 +136,7 @@ export function createApp(options = {}) {
     res.setHeader('Referrer-Policy', 'same-origin');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
     try {
       const url = new URL(req.url, 'http://localhost');
       const path = decodeURIComponent(url.pathname);
@@ -91,6 +154,24 @@ export function createApp(options = {}) {
         const supplied = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization || '')?.[1];
         if (req.method === 'GET' && parts.length === 3) return json(res, 200, { session: store.session(code) });
         if (req.method === 'GET' && action === 'me' && parts.length === 4) return json(res, 200, store.me(code, supplied));
+        if (action === 'beers' && parts.length === 6 && parts[5] === 'image') {
+          const beerId = parts[4];
+          if (req.method === 'GET' || req.method === 'HEAD') {
+            const image = store.beerImage(code, beerId);
+            res.writeHead(200, { 'Content-Type': image.contentType, 'Content-Length': image.data.length, 'Cache-Control': 'public, max-age=60' });
+            res.end(req.method === 'HEAD' ? undefined : image.data);
+            return;
+          }
+          store.authorizeBeerImage(code, supplied, beerId);
+          rateLimit(req, 'image', 60, 60_000);
+          let result;
+          if (req.method === 'PUT') result = store.setBeerImage(code, supplied, beerId, await uploadedImage(req));
+          else if (req.method === 'DELETE') result = store.deleteBeerImage(code, supplied, beerId);
+          else throw new AppError(405, 'Metoden støttes ikke.');
+          json(res, 200, result);
+          broadcast(code);
+          return;
+        }
         if (req.method === 'GET' && action === 'qr.svg' && parts.length === 4) {
           store.session(code);
           rateLimit(req, 'qr', 240, 60_000);

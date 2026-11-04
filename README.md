@@ -18,12 +18,22 @@ Ved utvikling kan du bruke `npm run dev` for automatisk omstart når serverkoden
 ## Slik gjennomfører du en smaking
 
 1. Opprett en smaking og gi den et navn.
-2. Legg inn ølene dere skal smake, gjerne med bryggeri og alkoholprosent.
+2. Legg inn ølene dere skal smake, gjerne med bryggeri, alkoholprosent og et bilde av flasken eller boksen.
 3. Vis QR-koden på arrangørsiden eller TV-en, eller del deltakerlenken. Når deltakerne skanner QR-koden med mobilkameraet, åpnes riktig smaking. De skriver navnet sitt og vises så på tavlen.
 4. Åpne TV-visningen på en stor skjerm.
 5. Åpne det første ølet for poenggiving fra arrangørsiden. Hver deltaker velger et heltall fra **1 til 10** og lagrer poenget sitt.
 6. TV-visningen viser hvem som har stemt, hvem som mangler, og tabellen over ølene. Rangeringen bruker gjennomsnittspoeng; antall stemmer vises ved siden av.
 7. Åpne neste øl når alle er klare, eller steng poenggivingen. Tidligere poeng blir bevart. Deltakerne kan endre poenget sitt mens det aktuelle ølet er åpent.
+
+### Bilder av ølene
+
+Velg et bilde når du legger til et øl, eller legg til og bytt bilde senere fra øllisten. Du kan også fjerne bildet uten å endre ølet eller poengene. Bildene vises for deltakerne og på TV-en.
+
+JPG, PNG og WebP støttes, opptil **10 MiB per bilde** og 40 millioner piksler. Serveren tilpasser bildene til maksimalt 1600 × 1600 piksler og lagrer dem som WebP. Kamerarotasjon korrigeres, og opprinnelige metadata fjernes. Bilder i for eksempel HEIC-format må først lagres som JPG eller PNG.
+
+### Gjengens poeng
+
+Gjengens oversikt viser hvor mange øl hver deltaker har vurdert og gjennomsnittet vedkommende har gitt gjennom kvelden. Kveldens samlede snitt beregnes av alle registrerte vurderinger. Manglende vurderinger teller ikke som null, og endringer erstatter den tidligere vurderingen.
 
 Arrangørtilgangen og deltakertilgangen huskes i nettleseren som opprettet dem. Bruk samme nettleser for å fortsette senere. Ikke slett nettleserdata under en smaking. Koden gir innsyn i smakingens navn, deltakernavn og resultater; del den bare med dem som skal delta. Bruk gjerne fornavn eller kallenavn.
 
@@ -39,7 +49,7 @@ Appen ber søkemotorer om ikke å indeksere sidene. En skjult QR-lenke kan likev
 
 ## Lagring og drift
 
-Appen bruker SQLite og trenger ingen ekstern databasetjeneste eller API-nøkler. Databasen opprettes ved første oppstart. Den er utelatt fra Git, sammen med installerte testavhengigheter.
+Appen bruker SQLite og trenger ingen ekstern databasetjeneste eller API-nøkler. Databasen opprettes ved første oppstart og inneholder både smakinger, poeng og opplastede bilder. Den er utelatt fra Git, sammen med installerte testavhengigheter. Eksisterende databaser oppdateres automatisk når appen starter.
 
 | Variabel | Standard | Bruk |
 | --- | --- | --- |
@@ -55,7 +65,7 @@ PORT=8080 DATA_DIR=/var/lib/juleol npm start
 
 Ved hosting må `DATA_DIR` ligge på varig lagring. Kjør én appinstans mot databasen, bruk HTTPS foran serveren, og la en eventuell reverse proxy slippe gjennom Server-Sent Events uten buffering. Liveforbindelser gjenopprettes automatisk ved korte nettverksbrudd. Ta sikkerhetskopi av datamappen mens serveren er stoppet.
 
-Appen bruker `qrcode` for å generere QR-koder. `playwright-core`, `jsqr` og `pngjs` brukes til nettlesertesten, som også dekoder QR-bildene og kontrollerer at de åpner riktig smaking. Node kan vise en melding om at den innebygde SQLite-API-en er eksperimentell.
+Appen bruker `qrcode` for å generere QR-koder og `sharp` for å kontrollere og tilpasse ølbilder. `playwright-core`, `jsqr` og `pngjs` brukes til nettlesertesten, som også dekoder QR-bildene og kontrollerer at de åpner riktig smaking. Node kan vise en melding om at den innebygde SQLite-API-en er eksperimentell.
 
 ## Tester
 

@@ -2,7 +2,7 @@ const app = document.querySelector('#app');
 const params = new URLSearchParams(location.search);
 const view = ['host', 'join', 'tv'].includes(params.get('view')) ? params.get('view') : 'home';
 const code = (params.get('code') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-const state = { session: null, me: null, loading: view !== 'home', error: '', tab: params.has('code') ? 'join' : 'create', online: true, pending: '', qrFailed: false, ratings: {}, drafts: {}, recent: [], saved: {} };
+const state = { session: null, me: null, loading: view !== 'home', error: '', tab: params.has('code') ? 'join' : 'create', online: true, pending: '', qrFailed: false, ratings: {}, drafts: {}, recent: [], saved: {}, newBeerImage: null, failedImages: new Set() };
 let source;
 let toastTimer;
 let meRequest = 0;
@@ -30,7 +30,11 @@ function requireStorage() {
   if (!storageAvailable.storage) throw new Error('Nettleseren tillater ikke lagring. Tillat lagring for dette nettstedet før du oppretter eller blir med på en smaking.');
 }
 function acceptSession(incoming) {
-  if (!state.session || incoming.revision >= state.session.revision) { state.session = incoming; return true; }
+  if (!state.session || incoming.revision >= state.session.revision) {
+    if (!state.session || incoming.revision > state.session.revision) state.failedImages.clear();
+    state.session = incoming;
+    return true;
+  }
   return false;
 }
 const token = role => memoryTokens[role] || read(tokenKey(role));
@@ -58,6 +62,7 @@ function icon(name, className = '') {
     expand: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>',
     chevron: '<path d="m9 5 7 7-7 7"/>',
     star: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 16 5-5 5 5 3-3 5 5"/>',
   };
   return `<svg class="icon ${className}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths[name] || paths.star}</svg>`;
 }
@@ -83,6 +88,32 @@ function qrInvite(isTv = false) {
 
 function connection() { return !state.online ? `<div class="connection-banner" role="status">${icon('clock')} Forbindelsen er brutt. Vi kobler til igjen automatisk.</div>` : ''; }
 function meta(beer) { return [beer.brewery, beer.abv !== null && beer.abv !== undefined && beer.abv !== '' ? `${String(beer.abv).replace('.', ',')} %` : ''].filter(Boolean).map(esc).join(' <span aria-hidden="true">·</span> ') || 'Klar for en smak'; }
+function beerImage(beer, variant, testId = '') {
+  const available = beer.imageUrl && !state.failedImages.has(beer.imageUrl);
+  const small = ['thumb', 'leader'].includes(variant);
+  return `<span class="beer-photo beer-photo-${variant} ${available ? 'has-photo' : ''}">${available ? `<img src="${esc(beer.imageUrl)}" alt="${small ? '' : 'Bilde av '+esc(beer.name)}" data-beer-photo data-image-key="${esc(beer.imageUrl)}" ${testId ? `data-testid="${esc(testId)}"` : ''} decoding="async" ${small ? 'loading="lazy"' : ''}>` : ''}<span class="beer-photo-placeholder" aria-hidden="true">${icon('beer')}</span></span>`;
+}
+function newBeerImageField() {
+  const image = state.newBeerImage;
+  return `<div class="new-beer-image-field"><label for="new-beer-image">Bilde av ølet <span class="optional">valgfritt</span></label><input id="new-beer-image" data-testid="new-beer-image" data-new-beer-image type="file" accept="image/jpeg,image/png,image/webp" aria-label="Bilde av ølet" hidden ${state.pending ? 'disabled' : ''}><div class="image-picker ${image ? 'has-preview' : ''}">${image ? `<img class="beer-image-preview" data-testid="beer-image-preview" src="${esc(image.url)}" alt="Forhåndsvisning av valgt ølbilde"><div class="image-picker-details"><strong>${esc(image.file.name)}</strong><span>Klart til å legges til med ølet</span><div class="image-picker-actions"><button type="button" class="text-button" data-action="choose-new-image" ${state.pending ? 'disabled' : ''}>Bytt bilde</button><button type="button" class="text-button" data-action="clear-new-image" ${state.pending ? 'disabled' : ''}>Fjern bilde</button></div></div>` : `<span class="image-picker-icon">${icon('image')}</span><div class="image-picker-details"><button type="button" class="text-button" data-action="choose-new-image" ${state.pending ? 'disabled' : ''}>Velg bilde av flasken eller boksen ${icon('plus')}</button><span>Fra kamera eller bildebibliotek</span></div>`}</div><p class="image-help" id="beer-image-help">JPEG, PNG eller WebP. Maks 10 MB.</p></div>`;
+}
+function beerRow(beer, index) {
+  const active = beer.id === state.session.activeBeerId;
+  return `<li class="beer-list-item photo-beer-row ${active ? 'selected' : ''}"><span class="beer-order">${String(index + 1).padStart(2, '0')}</span>${beerImage(beer, 'thumb', `beer-image-${beer.id}`)}<div class="beer-info"><strong>${esc(beer.name)}</strong><small>${meta(beer)}${beer.scoreCount ? ` · ${plural(beer.scoreCount, 'stemme', 'stemmer')}` : ''}</small><div class="beer-image-actions"><button type="button" class="text-button" data-action="choose-beer-image" data-id="${esc(beer.id)}" aria-label="${beer.imageUrl ? 'Bytt bilde av' : 'Legg til bilde av'} ${esc(beer.name)}" ${state.pending ? 'disabled' : ''}>${icon('image')} ${beer.imageUrl ? 'Bytt bilde' : 'Legg til bilde'}</button>${beer.imageUrl ? `<button type="button" class="text-button remove-image-button" data-action="remove-beer-image" data-id="${esc(beer.id)}" aria-label="Fjern bilde av ${esc(beer.name)}" ${state.pending ? 'disabled' : ''}>Fjern bilde</button>` : ''}</div><input type="file" id="beer-image-${esc(beer.id)}" data-testid="beer-image-input" data-id="${esc(beer.id)}" data-existing-beer-image="${esc(beer.id)}" accept="image/jpeg,image/png,image/webp" aria-label="Bilde av ${esc(beer.name)}" hidden ${state.pending ? 'disabled' : ''}></div><div class="beer-actions">${active ? '<span class="status-pill"><span class="live-dot"></span> Smakes nå</span>' : `<button class="button button-small button-outline" data-action="open-round" data-id="${esc(beer.id)}" ${state.pending ? 'disabled' : ''}>${beer.scoreCount ? 'Åpne igjen' : 'Start runde'} ${icon('arrow')}</button>`}${!beer.scoreCount && !active ? `<button class="icon-button remove-beer" data-action="delete-beer" data-id="${esc(beer.id)}" aria-label="Fjern ${esc(beer.name)}" title="Fjern ølet" ${state.pending ? 'disabled' : ''}>${icon('close')}</button>` : ''}</div></li>`;
+}
+function clearNewBeerImage() {
+  if (state.newBeerImage) URL.revokeObjectURL(state.newBeerImage.url);
+  state.newBeerImage = null;
+}
+function validateImage(file) {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type.toLowerCase())) throw new Error('Velg et bilde i JPEG-, PNG- eller WebP-format.');
+  if (!file.size) throw new Error('Bildefilen er tom. Velg et annet bilde.');
+  if (file.size > 10 * 1024 * 1024) throw new Error('Bildet er for stort. Maksimal størrelse er 10 MB.');
+}
+async function uploadBeerImage(beerId, file) {
+  const result = await api(`/api/sessions/${code}/beers/${encodeURIComponent(beerId)}/image`, { method: 'PUT', role: 'admin', rawBody: file });
+  acceptSession(result.session);
+}
 function ranking() {
   const beers = [...state.session.beers].sort((a, b) => (b.averageScore ?? -1) - (a.averageScore ?? -1) || b.totalScore - a.totalScore || a.order - b.order);
   let previous, rank;
@@ -94,7 +125,12 @@ function ranking() {
 }
 function leaderboard(tv = false) {
   const beers = ranking();
-  return `<section class="panel leaderboard ${tv ? 'tv-leaderboard' : ''}"><div class="panel-heading"><div><span class="eyebrow">KVELDENS FAVORITTER</span><h2>Resultattavlen</h2></div><span class="panel-icon">${icon('cup')}</span></div><p class="panel-description">Rangert etter gjennomsnitt · 1–10 poeng</p>${!beers.length ? `<div class="empty-state">${icon('cup')}<h3>Hvem blir kveldens favoritt?</h3><p>Resultatene dukker opp her når ølene er lagt til.</p></div>` : `<div class="leader-table" role="table" aria-label="Ølenes plassering"><div class="leader-row leader-head" role="row"><span role="columnheader">Plass</span><span role="columnheader">Øl</span><span role="columnheader">Stemmer</span><span role="columnheader">Snitt</span></div>${beers.map(beer => `<div class="leader-row ${beer.rank === 1 ? 'leader-first' : ''} ${beer.id === state.session.activeBeerId ? 'leader-active' : ''}" role="row"><span class="rank ${beer.rank === 1 ? 'rank-first' : ''}" role="cell">${beer.rank === 1 ? '<span class="sr-only">1</span>'+icon('cup') : beer.rank || '–'}</span><span class="beer-cell" role="cell"><strong>${esc(beer.name)}</strong><small>${meta(beer)}${beer.id === state.session.activeBeerId ? '<span class="now-label">Smakes nå</span>' : ''}</small></span><span class="vote-count" role="cell">${beer.scoreCount}<span class="mobile-vote-label"> stemmer</span></span><span class="score-number" role="cell">${beer.scoreCount ? num(beer.averageScore) : '–'}</span></div>`).join('')}</div>`}</section>`;
+  return `<section class="panel leaderboard ${tv ? 'tv-leaderboard' : ''}"><div class="panel-heading"><div><span class="eyebrow">KVELDENS FAVORITTER</span><h2>Resultattavlen</h2></div><span class="panel-icon">${icon('cup')}</span></div><p class="panel-description">Rangert etter gjennomsnitt · 1–10 poeng</p>${!beers.length ? `<div class="empty-state">${icon('cup')}<h3>Hvem blir kveldens favoritt?</h3><p>Resultatene dukker opp her når ølene er lagt til.</p></div>` : `<div class="leader-table" role="table" aria-label="Ølenes plassering"><div class="leader-row leader-head" role="row"><span role="columnheader">Plass</span><span role="columnheader">Øl</span><span role="columnheader">Stemmer</span><span role="columnheader">Snitt</span></div>${beers.map(beer => `<div class="leader-row ${beer.rank === 1 ? 'leader-first' : ''} ${beer.id === state.session.activeBeerId ? 'leader-active' : ''}" role="row"><span class="rank ${beer.rank === 1 ? 'rank-first' : ''}" role="cell">${beer.rank === 1 ? '<span class="sr-only">1</span>'+icon('cup') : beer.rank || '–'}</span><span class="beer-cell ${beer.imageUrl ? 'beer-cell-with-photo' : ''}" role="cell">${beer.imageUrl ? beerImage(beer, 'leader') : ''}<span class="beer-cell-text"><strong>${esc(beer.name)}</strong><small>${meta(beer)}${beer.id === state.session.activeBeerId ? '<span class="now-label">Smakes nå</span>' : ''}</small></span></span><span class="vote-count" role="cell">${beer.scoreCount}<span class="mobile-vote-label"> stemmer</span></span><span class="score-number" role="cell">${beer.scoreCount ? num(beer.averageScore) : '–'}</span></div>`).join('')}</div>`}</section>`;
+}
+function groupAverages(isTv = false) {
+  const s = state.session;
+  const average = s.groupAverageScore == null ? '–' : num(s.groupAverageScore);
+  return `<section class="panel group-average-panel ${isTv ? 'tv-group-averages' : ''}"><div class="group-average-heading"><div><span class="eyebrow">HELE KVELDEN</span><h2>Gjengens poeng</h2></div><div class="group-average-summary"><span>Kveldens snitt</span><strong data-testid="group-average">${average}</strong></div></div><p class="group-average-description">Hver deltakers snitt av ølene de har gitt poeng. Kveldens snitt teller alle ${plural(s.groupScoreCount || 0, 'stemme', 'stemmer')}.</p>${s.participants.length ? `<div class="participant-average-list" data-testid="participant-average-list" role="table" aria-label="Deltakernes gjennomsnitt gjennom hele kvelden"><div class="participant-average-row participant-average-head" role="row"><span role="columnheader">Deltaker</span><span role="columnheader">Øl smakt</span><span role="columnheader">Snitt</span></div>${s.participants.map(person => `<div class="participant-average-row" role="row" data-participant-average="${esc(person.id)}"><span class="average-participant-name" role="cell">${esc(person.name)}</span><span class="average-beer-count" role="cell">${person.scoreCount || 0}</span><strong class="participant-average-score" role="cell">${person.averageScore == null ? '–' : num(person.averageScore)}</strong></div>`).join('')}</div>` : '<p class="averages-empty">Gjengens gjennomsnitt dukker opp her når deltakerne blir med.</p>'}</section>`;
 }
 function participants(tv = false) {
   const s = state.session;
@@ -105,7 +141,7 @@ function participants(tv = false) {
 function host() {
   const s = state.session;
   const active = s.beers.find(beer => beer.id === s.activeBeerId);
-  return `${header(`<span class="role-badge">Arrangør</span><a class="button button-small button-outline" href="${url('tv')}" target="_blank" rel="noopener">${icon('tv')} Åpne TV-visning</a>`)}${connection()}<main id="main" class="dashboard"><div class="page-heading"><div><span class="eyebrow">VELKOMMEN TIL BORDET</span><h1>${esc(s.name)}</h1><p>Legg inn ølene, samle gjengen og åpne den første smaksrunden.</p></div><div class="session-code"><span>DEL KODEN MED GJENGEN</span><strong>${esc(s.code)}</strong><button class="text-button" data-action="copy-link">${icon('copy')} Kopier deltakerlenke</button></div></div><div class="host-layout"><div class="main-column"><section class="round-card ${active ? 'is-active' : ''}"><div class="round-icon">${icon('beer')}</div><div class="round-content"><span class="eyebrow">${active ? '<span class="live-dot"></span> SMAKES NÅ' : 'NESTE GODE SMAK'}</span><h2>${active ? esc(active.name) : 'Klar for første skål?'}</h2><p>${active ? meta(active) : 'Legg til ølene under og velg et øl for å åpne poenggivningen.'}</p></div>${active ? `<button class="button button-light" data-action="close-round" ${state.pending ? 'disabled' : ''}>Avslutt runden ${icon('check')}</button>` : ''}</section><section class="panel beer-panel"><div class="panel-heading"><div><span class="eyebrow">PÅ SMAKSMENYEN</span><h2>Kveldens øl <span class="heading-count">${s.beers.length}</span></h2></div></div>${s.beers.length ? `<ol class="beer-list">${s.beers.map((beer, index) => `<li class="beer-list-item ${beer.id === s.activeBeerId ? 'selected' : ''}"><span class="beer-order">${String(index + 1).padStart(2, '0')}</span><div class="beer-info"><strong>${esc(beer.name)}</strong><small>${meta(beer)}${beer.scoreCount ? ` · ${plural(beer.scoreCount, 'stemme', 'stemmer')}` : ''}</small></div><div class="beer-actions">${beer.id === s.activeBeerId ? '<span class="status-pill"><span class="live-dot"></span> Smakes nå</span>' : `<button class="button button-small button-outline" data-action="open-round" data-id="${esc(beer.id)}" ${state.pending ? 'disabled' : ''}>${beer.scoreCount ? 'Åpne igjen' : 'Start runde'} ${icon('arrow')}</button>`}${!beer.scoreCount && beer.id !== s.activeBeerId ? `<button class="icon-button remove-beer" data-action="delete-beer" data-id="${esc(beer.id)}" aria-label="Fjern ${esc(beer.name)}" title="Fjern ølet">${icon('close')}</button>` : ''}</div></li>`).join('')}</ol>` : '<div class="empty-state compact"><h3>Et blankt ark. Mange gode smaker.</h3><p>Begynn med å legge til det første ølet.</p></div>'}<form data-form="beer" class="add-beer-form"><h3>${icon('plus')} Legg til et øl</h3><div class="beer-form-grid"><div class="field field-beer"><label for="beer-name">Navn på ølet <span aria-hidden="true">*</span></label><input id="beer-name" name="name" required maxlength="100" placeholder="F.eks. Julebokk" autocomplete="off"></div><div class="field field-brewery"><label for="beer-brewery">Bryggeri <span class="optional">valgfritt</span></label><input id="beer-brewery" name="brewery" maxlength="80" placeholder="F.eks. Aass" autocomplete="off"></div><div class="field field-abv"><label for="beer-abv">Alkohol %</label><input id="beer-abv" name="abv" type="number" step="0.1" min="0" max="100" inputmode="decimal" placeholder="6,5"></div><button class="button button-primary add-beer-button" ${state.pending ? 'disabled' : ''}>${icon('plus')} ${state.pending === 'beer' ? 'Legger til …' : 'Legg til'}</button></div></form></section>${leaderboard()}</div><aside class="side-column"><section class="panel invitation-panel"><span class="panel-icon">${icon('users')}</span><h2>Smak bedre sammen.</h2><p>Skann QR-koden med mobilkameraet og bli med på denne smakingen.</p>${qrInvite()}<button class="button button-outline button-block" data-action="copy-link">${icon('copy')} Kopier invitasjonslenke</button><a class="text-button" href="${url('join')}" target="_blank" rel="noopener">Bli med selv ${icon('arrow')}</a></section>${participants()}</aside></div><p class="privacy-note">${icon('check')} Smakingen lagres automatisk. ${storageAvailable.persistent ? 'Arrangørtilgangen er lagret i denne nettleseren.' : 'Tilgangen lagres bare i denne fanen. Behold fanen åpen.'}</p></main>${footer()}`;
+  return `${header(`<span class="role-badge">Arrangør</span><a class="button button-small button-outline" href="${url('tv')}" target="_blank" rel="noopener">${icon('tv')} Åpne TV-visning</a>`)}${connection()}<main id="main" class="dashboard"><div class="page-heading"><div><span class="eyebrow">VELKOMMEN TIL BORDET</span><h1>${esc(s.name)}</h1><p>Legg inn ølene, samle gjengen og åpne den første smaksrunden.</p></div><div class="session-code"><span>DEL KODEN MED GJENGEN</span><strong>${esc(s.code)}</strong><button class="text-button" data-action="copy-link">${icon('copy')} Kopier deltakerlenke</button></div></div><div class="host-layout"><div class="main-column"><section class="round-card ${active ? 'is-active' : ''}"><div class="round-icon">${icon('beer')}</div><div class="round-content"><span class="eyebrow">${active ? '<span class="live-dot"></span> SMAKES NÅ' : 'NESTE GODE SMAK'}</span><h2>${active ? esc(active.name) : 'Klar for første skål?'}</h2><p>${active ? meta(active) : 'Legg til ølene under og velg et øl for å åpne poenggivningen.'}</p></div>${active ? `<button class="button button-light" data-action="close-round" ${state.pending ? 'disabled' : ''}>Avslutt runden ${icon('check')}</button>` : ''}</section><section class="panel beer-panel"><div class="panel-heading"><div><span class="eyebrow">PÅ SMAKSMENYEN</span><h2>Kveldens øl <span class="heading-count">${s.beers.length}</span></h2></div></div>${s.beers.length ? `<ol class="beer-list">${s.beers.map(beerRow).join('')}</ol>` : '<div class="empty-state compact"><h3>Et blankt ark. Mange gode smaker.</h3><p>Begynn med å legge til det første ølet.</p></div>'}<form data-form="beer" class="add-beer-form"><h3>${icon('plus')} Legg til et øl</h3><div class="beer-form-grid"><div class="field field-beer"><label for="beer-name">Navn på ølet <span aria-hidden="true">*</span></label><input id="beer-name" name="name" required maxlength="100" placeholder="F.eks. Julebokk" autocomplete="off"></div><div class="field field-brewery"><label for="beer-brewery">Bryggeri <span class="optional">valgfritt</span></label><input id="beer-brewery" name="brewery" maxlength="80" placeholder="F.eks. Aass" autocomplete="off"></div><div class="field field-abv"><label for="beer-abv">Alkohol %</label><input id="beer-abv" name="abv" type="number" step="0.1" min="0" max="100" inputmode="decimal" placeholder="6,5"></div><button class="button button-primary add-beer-button" ${state.pending ? 'disabled' : ''}>${icon('plus')} ${state.pending === 'beer' ? 'Legger til …' : 'Legg til'}</button></div>${newBeerImageField()}</form></section>${leaderboard()}${groupAverages()}</div><aside class="side-column"><section class="panel invitation-panel"><span class="panel-icon">${icon('users')}</span><h2>Smak bedre sammen.</h2><p>Skann QR-koden med mobilkameraet og bli med på denne smakingen.</p>${qrInvite()}<button class="button button-outline button-block" data-action="copy-link">${icon('copy')} Kopier invitasjonslenke</button><a class="text-button" href="${url('join')}" target="_blank" rel="noopener">Bli med selv ${icon('arrow')}</a></section>${participants()}</aside></div><p class="privacy-note">${icon('check')} Smakingen lagres automatisk. ${storageAvailable.persistent ? 'Arrangørtilgangen er lagret i denne nettleseren.' : 'Tilgangen lagres bare i denne fanen. Behold fanen åpen.'}</p></main>${footer()}`;
 }
 function joinForm() {
   return `${header('<a class="text-button" href="/">'+icon('back')+' Til forsiden</a>')}<main id="main" class="join-main"><section class="join-card panel"><div class="join-tree">${icon('tree')}</div><span class="eyebrow">DET ER PLASS TIL DEG OGSÅ</span><h1>${state.session ? esc(state.session.name) : 'Bli med rundt bordet.'}</h1><p>Godt øl og gode meninger. Hva skal vi kalle deg?</p><form data-form="join" class="stack-form"><label for="join-code">Kode til smakingen</label><input id="join-code" class="code-input" name="code" maxlength="8" value="${esc(code)}" placeholder="ABC123" required autocomplete="off" spellcheck="false" autocapitalize="characters"><label for="join-name">Navnet ditt</label><input id="join-name" name="name" maxlength="40" placeholder="F.eks. Nora" required autocomplete="given-name"><button class="button button-primary button-block" ${state.pending ? 'disabled' : ''}>${state.pending === 'join' ? 'Finner plassen din …' : 'Sett deg til bords '+icon('arrow')}</button></form></section></main>${footer()}`;
@@ -116,16 +152,16 @@ function participant() {
   const beer = s.beers.find(item => item.id === s.activeBeerId);
   const saved = beer && state.me.scores?.[beer.id];
   const selected = beer ? state.ratings[beer.id] ?? saved : null;
-  return `${header(`<span class="participant-greeting">${icon('users')} Hei, ${esc(me?.name || 'du')}!</span>`)}${connection()}<main id="main" class="participant-main"><div class="participant-heading"><span class="eyebrow">${esc(s.code)} · ${esc(s.name)}</span></div>${!storageAvailable.persistent ? '<p class="tab-storage-note">Tilgangen din lagres bare i denne fanen. Behold fanen åpen.</p>' : ''}${beer ? `<section class="tasting-card"><div class="tasting-label"><span class="live-dot"></span> SMAKES NÅ <span>ØL ${s.beers.findIndex(item => item.id === beer.id) + 1} AV ${s.beers.length}</span></div><div class="tasting-beer-icon">${icon('beer')}</div><h1>${esc(beer.name)}</h1><p class="tasting-meta">${meta(beer)}</p><div class="rating-divider"><span>HVA SYNES DU?</span></div><h2>Din smak. Dine poeng.</h2><p class="rating-description">Gi ølet fra 1 til 10 poeng.</p><form data-form="score" data-beer="${esc(beer.id)}"><fieldset class="rating-fieldset"><legend class="sr-only">Velg poeng fra 1 til 10</legend><div class="rating-grid">${Array.from({ length: 10 }, (_, index) => index + 1).map(score => `<button type="button" class="rating-button ${selected === score ? 'selected' : ''}" data-action="rate" data-score="${score}" aria-pressed="${selected === score}" aria-label="${score} poeng">${score}</button>`).join('')}</div><div class="rating-scale"><span>Ikke helt min smak</span><span>En ny julefavoritt</span></div></fieldset><button class="button button-primary button-block submit-score" ${!selected || state.pending ? 'disabled' : ''}>${state.pending === 'score' ? 'Lagrer poengene …' : saved && saved === selected ? icon('check')+' Poengene dine er lagret' : (saved ? 'Oppdater til ' : 'Gi ') + (selected ? selected+' poeng' : 'poeng') + ' '+icon('arrow')}</button>${saved ? `<p class="vote-confirmation">${icon('check')} Du har gitt ${saved} poeng. Du kan endre mens runden er åpen.</p>` : '<p class="rating-note">Poengene lagres når du trykker på knappen.</p>'}</form></section>` : `<section class="tasting-card waiting-card"><div class="waiting-decoration">${icon('beer')}${icon('star')}</div><span class="eyebrow">GODT SELSKAP TAR DEN TIDEN DET TAR</span><h1>${Object.keys(state.me.scores || {}).length ? 'Takk for smaken!' : 'Du er med!'}</h1><p>${s.beers.length ? 'Arrangøren åpner neste smaksrunde. Vi oppdaterer siden for deg når det er klart.' : 'Gjengen samles og ølene gjøres klare. Første øl dukker opp her når smakingen begynner.'}</p><div class="waiting-status"><span class="loading-dot"></span> Venter på arrangøren</div></section>`}<div class="participant-results">${leaderboard()}${participants()}</div></main>${footer()}`;
+  return `${header(`<span class="participant-greeting">${icon('users')} Hei, ${esc(me?.name || 'du')}!</span>`)}${connection()}<main id="main" class="participant-main"><div class="participant-heading"><span class="eyebrow">${esc(s.code)} · ${esc(s.name)}</span></div>${!storageAvailable.persistent ? '<p class="tab-storage-note">Tilgangen din lagres bare i denne fanen. Behold fanen åpen.</p>' : ''}${beer ? `<section class="tasting-card"><div class="tasting-label"><span class="live-dot"></span> SMAKES NÅ <span>ØL ${s.beers.findIndex(item => item.id === beer.id) + 1} AV ${s.beers.length}</span></div>${beer.imageUrl ? beerImage(beer, 'active', 'active-beer-image') : `<div class="tasting-beer-icon">${icon('beer')}</div>`}<h1>${esc(beer.name)}</h1><p class="tasting-meta">${meta(beer)}</p><div class="rating-divider"><span>HVA SYNES DU?</span></div><h2>Din smak. Dine poeng.</h2><p class="rating-description">Gi ølet fra 1 til 10 poeng.</p><form data-form="score" data-beer="${esc(beer.id)}"><fieldset class="rating-fieldset"><legend class="sr-only">Velg poeng fra 1 til 10</legend><div class="rating-grid">${Array.from({ length: 10 }, (_, index) => index + 1).map(score => `<button type="button" class="rating-button ${selected === score ? 'selected' : ''}" data-action="rate" data-score="${score}" aria-pressed="${selected === score}" aria-label="${score} poeng">${score}</button>`).join('')}</div><div class="rating-scale"><span>Ikke helt min smak</span><span>En ny julefavoritt</span></div></fieldset><button class="button button-primary button-block submit-score" ${!selected || state.pending ? 'disabled' : ''}>${state.pending === 'score' ? 'Lagrer poengene …' : saved && saved === selected ? icon('check')+' Poengene dine er lagret' : (saved ? 'Oppdater til ' : 'Gi ') + (selected ? selected+' poeng' : 'poeng') + ' '+icon('arrow')}</button>${saved ? `<p class="vote-confirmation">${icon('check')} Du har gitt ${saved} poeng. Du kan endre mens runden er åpen.</p>` : '<p class="rating-note">Poengene lagres når du trykker på knappen.</p>'}</form></section>` : `<section class="tasting-card waiting-card"><div class="waiting-decoration">${icon('beer')}${icon('star')}</div><span class="eyebrow">GODT SELSKAP TAR DEN TIDEN DET TAR</span><h1>${Object.keys(state.me.scores || {}).length ? 'Takk for smaken!' : 'Du er med!'}</h1><p>${s.beers.length ? 'Arrangøren åpner neste smaksrunde. Vi oppdaterer siden for deg når det er klart.' : 'Gjengen samles og ølene gjøres klare. Første øl dukker opp her når smakingen begynner.'}</p><div class="waiting-status"><span class="loading-dot"></span> Venter på arrangøren</div></section>`}<div class="participant-results">${leaderboard()}${participants()}${groupAverages()}</div></main>${footer()}`;
 }
 function tv() {
   const s = state.session;
   const beer = s.beers.find(item => item.id === s.activeBeerId);
-  return `<div class="tv-shell"><header class="tv-header">${brand()}<div class="tv-session-name">${esc(s.name)}</div><div class="tv-live"><span class="live-dot"></span> DIREKTE <button class="icon-button" data-action="fullscreen" aria-label="Vis i fullskjerm" title="Vis i fullskjerm">${icon('expand')}</button></div></header>${connection()}<main id="main" class="tv-main"><div class="tv-top"><section class="tv-current"><span class="eyebrow">${beer ? 'I GLASSET AKKURAT NÅ' : 'VELKOMMEN TIL JULEØLSMAKING'}</span><h1>${beer ? esc(beer.name) : 'God smak. Godt selskap.'}</h1><p>${beer ? meta(beer) : 'Arrangøren åpner en smaksrunde når gjengen er klar.'}</p>${beer ? `<div class="tv-round-number">ØL ${s.beers.findIndex(item => item.id === beer.id) + 1}<span> / ${s.beers.length}</span></div>` : ''}</section><aside class="tv-code tv-qr-card">${qrInvite(true)}<div class="tv-join-details"><span class="tv-join-kicker">BLI MED PÅ MOBILEN</span><h2>Skann og smak.</h2><p>Åpne mobilkameraet og skann QR-koden.</p><span class="tv-manual-label">ELLER BRUK KODEN</span><strong>${esc(s.code)}</strong></div></aside></div><div class="tv-grid">${leaderboard(true)}${participants(true)}</div></main><footer class="tv-footer"><span>Gode smaker. Ærlige poeng.</span><span>Resultatene oppdateres automatisk <span class="live-dot"></span></span></footer></div>`;
+  return `<div class="tv-shell"><header class="tv-header">${brand()}<div class="tv-session-name">${esc(s.name)}</div><div class="tv-live"><span class="live-dot"></span> DIREKTE <button class="icon-button" data-action="fullscreen" aria-label="Vis i fullskjerm" title="Vis i fullskjerm">${icon('expand')}</button></div></header>${connection()}<main id="main" class="tv-main"><div class="tv-top"><section class="tv-current ${beer?.imageUrl ? 'tv-current-with-photo' : ''}">${beer?.imageUrl ? beerImage(beer, 'tv', 'active-beer-image') : ''}<span class="eyebrow">${beer ? 'I GLASSET AKKURAT NÅ' : 'VELKOMMEN TIL JULEØLSMAKING'}</span><h1>${beer ? esc(beer.name) : 'God smak. Godt selskap.'}</h1><p>${beer ? meta(beer) : 'Arrangøren åpner en smaksrunde når gjengen er klar.'}</p>${beer ? `<div class="tv-round-number">ØL ${s.beers.findIndex(item => item.id === beer.id) + 1}<span> / ${s.beers.length}</span></div>` : ''}</section><aside class="tv-code tv-qr-card">${qrInvite(true)}<div class="tv-join-details"><span class="tv-join-kicker">BLI MED PÅ MOBILEN</span><h2>Skann og smak.</h2><p>Åpne mobilkameraet og skann QR-koden.</p><span class="tv-manual-label">ELLER BRUK KODEN</span><strong>${esc(s.code)}</strong></div></aside></div><div class="tv-grid">${leaderboard(true)}<aside class="tv-side-column">${participants(true)}${groupAverages(true)}</aside></div></main><footer class="tv-footer"><span>Gode smaker. Ærlige poeng.</span><span>Resultatene oppdateres automatisk <span class="live-dot"></span></span></footer></div>`;
 }
 function errorPage() { return `${header('<a class="text-button" href="/">'+icon('back')+' Til forsiden</a>')}<main id="main" class="join-main"><section class="panel join-card error-card">${icon('beer')}<h1>Vi fant ikke bordet.</h1><p>${esc(state.error)}</p><a href="/" class="button button-primary">Til forsiden ${icon('arrow')}</a><button class="text-button" data-action="retry">Prøv igjen</button></section></main>${footer()}`; }
 function preserveDrafts() {
-  app.querySelectorAll('form input').forEach(input => { state.drafts[input.id] = input.value; });
+  app.querySelectorAll('form input:not([type="file"])').forEach(input => { state.drafts[input.id] = input.value; });
 }
 function render() {
   preserveDrafts();
@@ -142,7 +178,7 @@ function render() {
   else if (view === 'tv') app.innerHTML = tv();
   else if (view === 'host') app.innerHTML = host();
   else app.innerHTML = state.me?.role === 'participant' ? participant() : joinForm();
-  app.querySelectorAll('form input').forEach(input => { if (Object.hasOwn(state.drafts, input.id)) input.value = state.drafts[input.id]; });
+  app.querySelectorAll('form input:not([type="file"])').forEach(input => { if (Object.hasOwn(state.drafts, input.id)) input.value = state.drafts[input.id]; });
   if (focused || focusedAction) {
     const element = focused ? document.getElementById(focused) : [...app.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusedAction && el.dataset.id === focusedDataId && el.dataset.score === focusedScore);
     if (element) {
@@ -152,6 +188,8 @@ function render() {
   }
   for (const [selector, testid] of [['[data-form="create"]','create-form'],['[data-form="join"]','join-form'],['[data-form="beer"]','beer-form'],['.submit-score','score-submit'],['.leaderboard','leaderboard'],['.people-list','pending-list'],['.connection-banner','connection-status']]) app.querySelector(selector)?.setAttribute('data-testid', testid);
   app.querySelectorAll('[data-score]').forEach(el => el.setAttribute('data-testid', `score-${el.dataset.score}`));
+  // Bind to each node: a native file picker can finish after an SSE render detached it.
+  app.querySelectorAll('[data-new-beer-image], [data-existing-beer-image]').forEach(input => input.addEventListener('change', handleImageChange));
   document.title = state.session ? `${state.session.name} — Juleøl` : 'Juleøl — finn kveldens favoritt';
 }
 function notify(message, isError = false) {
@@ -160,8 +198,8 @@ function notify(message, isError = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { area.innerHTML = ''; }, isError ? 9000 : 4500);
 }
-async function api(path, { method = 'GET', body, role, auth, signal } = {}) {
-  const response = await fetch(path, { method, signal, headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...((auth || role) ? { Authorization: `Bearer ${auth || token(role)}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+async function api(path, { method = 'GET', body, rawBody, role, auth, signal } = {}) {
+  const response = await fetch(path, { method, signal, headers: { ...(rawBody ? { 'Content-Type': rawBody.type } : body ? { 'Content-Type': 'application/json' } : {}), ...((auth || role) ? { Authorization: `Bearer ${auth || token(role)}` } : {}) }, ...(rawBody ? { body: rawBody } : body ? { body: JSON.stringify(body) } : {}) });
   let data;
   try { data = await response.json(); } catch { throw new Error('Serveren svarte ikke som forventet. Prøv igjen.'); }
   if (!response.ok) { const error = new Error(data.error || 'Noe gikk galt. Prøv igjen.'); error.status = response.status; throw error; }
@@ -177,7 +215,12 @@ async function refreshMe() {
 function subscribe() {
   source?.close();
   source = new EventSource(`/api/sessions/${code}/events`);
-  source.onopen = () => { if (!state.online) { state.online = true; render(); } };
+  source.onopen = () => {
+    const shouldRender = !state.online || state.failedImages.size > 0;
+    state.online = true;
+    state.failedImages.clear();
+    if (shouldRender) render();
+  };
   source.onerror = () => { if (state.online) { state.online = false; render(); } };
   source.addEventListener('state', async event => {
     try {
@@ -212,6 +255,12 @@ async function load() {
 }
 
 document.addEventListener('error', event => {
+  if (event.target.matches?.('[data-beer-photo]')) {
+    state.failedImages.add(event.target.dataset.imageKey);
+    event.target.hidden = true;
+    event.target.closest('.beer-photo')?.classList.remove('has-photo');
+    return;
+  }
   if (!event.target.matches?.('.join-qr')) return;
   state.qrFailed = true;
   const figure = event.target.closest('.qr-invite');
@@ -220,6 +269,27 @@ document.addEventListener('error', event => {
     figure.querySelector('.qr-load-error').hidden = false;
   }
 }, true);
+
+async function handleImageChange(event) {
+  const input = event.target;
+  if (!input.matches?.('[data-new-beer-image], [data-existing-beer-image]')) return;
+  const file = input.files?.[0];
+  if (!file || state.pending) return;
+  try { validateImage(file); }
+  catch (error) { input.value = ''; notify(error.message, true); return; }
+  if (input.hasAttribute('data-new-beer-image')) {
+    clearNewBeerImage();
+    state.newBeerImage = { file, url: URL.createObjectURL(file) };
+    render();
+    return;
+  }
+  const beerId = input.dataset.existingBeerImage;
+  state.pending = 'beer-image';
+  render();
+  try { await uploadBeerImage(beerId, file); notify('Bildet er lagret og vises for hele gjengen.'); }
+  catch (error) { notify(`Bildet kunne ikke lagres. ${error.message}`, true); }
+  finally { state.pending = ''; render(); }
+}
 
 document.addEventListener('submit', async event => {
   const form = event.target.closest('[data-form]');
@@ -252,12 +322,21 @@ document.addEventListener('submit', async event => {
       remember(targetCode, result.session.name, 'participant');
       location.assign(url('join', targetCode));
     } else if (type === 'beer') {
+      const imageFile = state.newBeerImage?.file;
       const result = await api(`/api/sessions/${code}/beers`, { method: 'POST', role: 'admin', body: { name: data.name.trim(), brewery: data.brewery.trim(), abv: data.abv === '' ? null : Number(data.abv) } });
       acceptSession(result.session);
       for (const key of ['beer-name', 'beer-brewery', 'beer-abv']) state.drafts[key] = '';
-      form.reset();
+      clearNewBeerImage();
       app.querySelectorAll('[data-form="beer"] input').forEach(input => { input.value = ''; });
-      notify('Ølet er lagt til på smaksmenyen.');
+      render();
+      if (imageFile) {
+        try {
+          await uploadBeerImage(result.beerId, imageFile);
+          notify('Ølet og bildet er lagt til på smaksmenyen.');
+        } catch (error) {
+          notify(`Ølet er lagt til, men bildet kunne ikke lagres. Bruk «Legg til bilde» ved ølet for å prøve igjen. ${error.message}`, true);
+        }
+      } else notify('Ølet er lagt til på smaksmenyen.');
     } else if (type === 'score') {
       const score = state.ratings[beerId] ?? state.me.scores?.[beerId];
       const result = await api(`/api/sessions/${code}/scores`, { method: 'POST', role: 'participant', body: { score, beerId } });
@@ -296,6 +375,20 @@ document.addEventListener('click', async event => {
     return;
   }
   if (state.pending) return;
+  if (action === 'choose-new-image') { document.querySelector('#new-beer-image')?.click(); return; }
+  if (action === 'clear-new-image') { clearNewBeerImage(); render(); return; }
+  if (action === 'choose-beer-image') { document.getElementById(`beer-image-${button.dataset.id}`)?.click(); return; }
+  if (action === 'remove-beer-image') {
+    state.pending = 'beer-image';
+    render();
+    try {
+      const result = await api(`/api/sessions/${code}/beers/${encodeURIComponent(button.dataset.id)}/image`, { method: 'DELETE', role: 'admin' });
+      acceptSession(result.session);
+      notify('Bildet er fjernet. Ølet og poengene er beholdt.');
+    } catch (error) { notify(error.message, true); }
+    finally { state.pending = ''; render(); }
+    return;
+  }
   if (['open-round', 'close-round', 'delete-beer'].includes(action)) {
     if (action === 'open-round' && state.session.activeBeerId && state.session.missingCount > 0 && !confirm(`${state.session.missingCount} har ikke gitt poeng ennå. Åpne neste øl likevel?`)) return;
     if (action === 'close-round' && state.session.missingCount > 0 && !confirm(`${state.session.missingCount} har ikke gitt poeng ennå. Avslutte runden likevel?`)) return;

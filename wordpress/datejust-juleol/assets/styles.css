@@ -83,3 +83,12 @@
   .tv-manual-label { font-size: .51rem; margin-top: 15px; }
   .tv-join-details strong { font-size: 2rem; }
 }
+
+/* Optional beer photos. Keep the whole bottle/label visible. */
+.beer-photo{object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px;flex-shrink:0}
+.beer-thumb{width:44px;height:58px}.leader-thumb{float:left;width:38px;height:50px;margin:0 12px 0 0}.beer-cell:has(.leader-thumb){min-height:50px}
+.tasting-photo{display:block;width:100px;height:130px;margin:22px auto 14px}.round-photo{width:45px;height:58px}
+.tv-current-photo{float:left;width:94px;height:126px;margin:0 24px 12px 0}.tv-current:after{content:'';display:block;clear:both}
+.tv-leaderboard .leader-thumb{width:48px;height:64px}.beer-actions .image-upload{font-size:.68rem;white-space:nowrap}
+@media(max-width:1100px){.beer-actions{flex-wrap:wrap}.beer-list-item{flex-wrap:wrap}.beer-actions{margin-left:33px}}
+@media(max-width:700px){.beer-thumb{width:36px;height:48px}.beer-info{min-width:0}.leader-thumb{width:28px;height:38px;margin-right:7px}.tv-leaderboard .leader-thumb{width:32px;height:44px}.tv-current-photo{width:68px;height:90px;margin-right:16px}.tasting-photo{width:86px;height:112px}}

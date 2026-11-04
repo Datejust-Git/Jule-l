@@ -1,4 +1,4 @@
-Datejust Juleølsmaking 1.0.0
+Datejust Juleølsmaking 1.1.0
 
 Install the ZIP containing this directory as a WordPress plugin, then activate it.
 The app is served at /juleolsmaking/ with no menu, theme or homepage changes.
@@ -10,6 +10,11 @@ WordPress stores sessions in its own datejust_juleol database table (InnoDB).
 Row locks protect simultaneous scoring. Tokens are stored as SHA-256 hashes.
 Phones and TV poll for updates every 2.5 seconds (6 seconds in background tabs).
 QR codes are generated locally in the browser; no external QR service is used.
+The host can add, replace or remove an optional photo for each beer. The browser
+reduces the image to 400 pixels and exports JPEG before uploading. The endpoint
+requires the host token, validates size, type and dimensions, and stores the
+JPEG with a random name in WordPress uploads. Only the image URL is in live state.
+Removing or replacing a photo preserves its uploaded file; no media is deleted.
 
 Host access stays in the browser that created the tasting. Joining needs the
 six-character code. Participants can see names and results, so use first names

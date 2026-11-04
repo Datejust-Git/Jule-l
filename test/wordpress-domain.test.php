@@ -19,6 +19,12 @@ rejects(403, function () use (&$data, $a) { Datejust_Juleol_Domain::mutate($data
 Datejust_Juleol_Domain::mutate($data, 'beers', array('name' => 'Juleøl A', 'brewery' => 'Testbryggeri', 'abv' => 6.5), $host);
 Datejust_Juleol_Domain::mutate($data, 'beers', array('name' => 'Juleøl B'), $host);
 $first = $data['beers'][0]['id']; $second = $data['beers'][1]['id'];
+rejects(403, function () use (&$data, $a, $first) { Datejust_Juleol_Domain::mutate($data, 'image', array('imageUrl' => 'https://datejust.no/test.jpg'), $a['participantToken'], $first); }, 'participant cannot change photos');
+Datejust_Juleol_Domain::mutate($data, 'image', array('imageUrl' => 'https://datejust.no/test.jpg'), $host, $first);
+check(Datejust_Juleol_Domain::session($data)['beers'][0]['imageUrl'] === 'https://datejust.no/test.jpg', 'photo included in shared state');
+rejects(400, function () use (&$data, $host, $first) { Datejust_Juleol_Domain::mutate($data, 'image', array('imageUrl' => 'javascript:alert(1)'), $host, $first); }, 'unsafe photo URL rejected');
+Datejust_Juleol_Domain::mutate($data, 'image', array('imageUrl' => ''), $host, $first);
+check($data['beers'][0]['imageUrl'] === '', 'optional photo can be removed');
 Datejust_Juleol_Domain::mutate($data, 'round', array('beerId' => $first), $host);
 check(Datejust_Juleol_Domain::session($data)['missingCount'] === 2, 'two missing votes');
 foreach (array(0, 11, 1.5, '8') as $bad) {

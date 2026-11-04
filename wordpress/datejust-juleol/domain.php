@@ -111,6 +111,15 @@ final class Datejust_Juleol_Domain {
             case 'round':
                 $beer = self::beer($data, $input['beerId'] ?? null); $data['activeBeerId'] = $beer['id'];
                 break;
+            case 'image':
+                self::beer($data, $id);
+                $imageUrl = $input['imageUrl'] ?? '';
+                if (!is_string($imageUrl) || strlen($imageUrl) > 2048 || ($imageUrl !== '' && !preg_match('#^https?://#', $imageUrl))) {
+                    self::fail(400, 'Ugyldig bildeadresse.');
+                }
+                foreach ($data['beers'] as &$beer) { if ($beer['id'] === $id) { $beer['imageUrl'] = $imageUrl; break; } }
+                unset($beer);
+                break;
             case 'close': $data['activeBeerId'] = null; break;
             case 'scores':
                 if ($identity['role'] !== 'participant') { self::fail(403, 'Bli med som deltaker for å gi poeng.'); }

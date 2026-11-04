@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Datejust Juleølsmaking
  * Description: Egen juleølapp med mobilpoeng, QR-kode og TV-visning på /juleolsmaking/. Ingen meny- eller temaendringer.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Kennel Datejust
@@ -32,6 +32,7 @@ final class Datejust_Juleol_App {
         foreach (array('/health', '/sessions', '/sessions/(?P<code>[A-Za-z0-9]{6})',
             '/sessions/(?P<code>[A-Za-z0-9]{6})/(?P<action>me|join|beers|round|scores)',
             '/sessions/(?P<code>[A-Za-z0-9]{6})/beers/(?P<beer>[a-f0-9]{32})',
+            '/sessions/(?P<code>[A-Za-z0-9]{6})/beers/(?P<beer>[a-f0-9]{32})/(?P<image>image)',
             '/sessions/(?P<code>[A-Za-z0-9]{6})/round/(?P<close>close)') as $route) {
             register_rest_route(self::NS, $route, array('methods' => 'GET,POST,DELETE',
                 'permission_callback' => '__return_true', 'callback' => array(__CLASS__, 'api')));
@@ -62,7 +63,7 @@ final class Datejust_Juleol_App {
             }
             $input = array();
             if ($method !== 'GET') {
-                if (strlen($req->get_body()) > 16384) { throw new Datejust_Juleol_Error(413, 'Forespørselen er for stor.'); }
+                if (strlen($req->get_body()) > ($req['image'] ? 180000 : 16384)) { throw new Datejust_Juleol_Error(413, 'Forespørselen er for stor.'); }
                 if ($req->get_body() !== '') {
                     if (!preg_match('/^application\/json(?:\s*;|$)/i', $req->get_header('content-type'))) { throw new Datejust_Juleol_Error(415, 'Send forespørselen som JSON.'); }
                     $decoded = json_decode($req->get_body());
@@ -87,13 +88,34 @@ final class Datejust_Juleol_App {
                 if ($method === 'GET' && $action === '') { $result = array('session' => Datejust_Juleol_Domain::session(self::data($code))); }
                 elseif ($method === 'GET' && $action === 'me') { $result = Datejust_Juleol_Domain::me(self::data($code), $token); }
                 else {
-                    if ($method === 'DELETE' && $req['beer']) { $action = 'delete'; }
+                    if ($method === 'POST' && $req['image']) { $action = 'image'; }
+                    elseif ($method === 'DELETE' && $req['beer'] && !$req['image']) { $action = 'delete'; }
                     elseif ($method === 'POST' && $req['close']) { $action = 'close'; }
                     elseif ($method !== 'POST' || !in_array($action, array('join', 'beers', 'round', 'scores'), true)) { throw new Datejust_Juleol_Error(405, 'Metoden støttes ikke.'); }
                     self::rate($action, $action === 'join' ? 120 : 600, $action === 'join' ? 900 : 60);
                     if ($wpdb->query('START TRANSACTION') === false) { throw new RuntimeException('Kunne ikke starte lagring.'); }
                     $transaction = true;
                     $data = self::data($code, true);
+                    if ($action === 'image') {
+                        if (Datejust_Juleol_Domain::me($data, $token)['role'] !== 'admin') { throw new Datejust_Juleol_Error(403, 'Bare arrangøren kan laste opp bilder.'); }
+                        $exists = false;
+                        foreach ($data['beers'] as $beer) { if ($beer['id'] === $req['beer']) { $exists = true; break; } }
+                        if (!$exists) { throw new Datejust_Juleol_Error(404, 'Fant ikke ølet i denne smakingen.'); }
+                        self::rate('image', 30, 60);
+                        $image = $input['image'] ?? null;
+                        if ($image === '') { $input = array('imageUrl' => ''); }
+                        else {
+                            if (!is_string($image) || !preg_match('#^data:image/jpeg;base64,([A-Za-z0-9+/=]+)$#D', $image, $match)) { throw new Datejust_Juleol_Error(400, 'Bruk et gyldig JPEG-bilde.'); }
+                            $bytes = base64_decode($match[1], true);
+                            $size = $bytes !== false ? @getimagesizefromstring($bytes) : false;
+                            if ($bytes === false || strlen($bytes) > 120000 || !$size || $size[2] !== IMAGETYPE_JPEG || $size[0] < 1 || $size[1] < 1 || $size[0] > 512 || $size[1] > 512) {
+                                throw new Datejust_Juleol_Error(400, 'Bildet må være et lite JPEG-bilde på maksimalt 512 × 512 piksler.');
+                            }
+                            $upload = wp_upload_bits('juleol-' . bin2hex(random_bytes(16)) . '.jpg', null, $bytes);
+                            if (!empty($upload['error'])) { throw new Datejust_Juleol_Error(500, 'Kunne ikke lagre bildet. Prøv igjen.'); }
+                            $input = array('imageUrl' => esc_url_raw($upload['url']));
+                        }
+                    }
                     $result = Datejust_Juleol_Domain::mutate($data, $action, $input, $token, $req['beer']);
                     $ok = $wpdb->update($table, array('payload' => wp_json_encode($data), 'updated_at' => current_time('mysql', true)), array('code' => $code), array('%s', '%s'), array('%s'));
                     if ($ok === false || $wpdb->query('COMMIT') === false) { throw new RuntimeException('Kunne ikke lagre endringen.'); }
@@ -130,7 +152,7 @@ final class Datejust_Juleol_App {
         $assets = plugins_url('assets/', __FILE__);
         $html = file_get_contents(__DIR__ . '/assets/index.html');
         $html = str_replace(array('href="/favicon.svg"', 'href="/styles.css"', 'src="/app.js"'),
-            array('href="' . esc_url($assets . 'favicon.svg') . '"', 'href="' . esc_url($assets . 'styles.css?ver=1.0.0') . '"', 'src="' . esc_url($assets . 'app.js?ver=1.0.0') . '"'), $html);
+            array('href="' . esc_url($assets . 'favicon.svg') . '"', 'href="' . esc_url($assets . 'styles.css?ver=1.1.0') . '"', 'src="' . esc_url($assets . 'app.js?ver=1.1.0') . '"'), $html);
         $config = array('base' => home_url('/juleolsmaking/'), 'api' => untrailingslashit(rest_url(self::NS)));
         $scripts = '<script nonce="' . esc_attr($nonce) . '">window.DATEJUST_JULEOL=' . wp_json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
         $scripts .= '<script src="' . esc_url($assets . 'qrcode.js') . '"></script>';

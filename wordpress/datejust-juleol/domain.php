@@ -37,22 +37,33 @@ final class Datejust_Juleol_Domain {
     }
     public static function session($data) {
         $beers = array(); $participants = array(); $scored = 0;
+        $beerIds = array(); $groupTotal = 0; $groupCount = 0;
         foreach ($data['beers'] as $beer) {
+            $beerIds[$beer['id']] = true;
             $total = 0; $count = 0;
             foreach ($data['scores'] as $votes) {
                 if (isset($votes[$beer['id']])) { $count++; $total += $votes[$beer['id']]; }
             }
-            $beers[] = $beer + array('scoreCount' => $count, 'totalScore' => $total, 'averageScore' => $count ? $total / $count : null);
+            $publicBeer = $beer;
+            $publicBeer['imageUrl'] = !empty($beer['imageUrl']) ? $beer['imageUrl'] : null;
+            $beers[] = $publicBeer + array('scoreCount' => $count, 'totalScore' => $total, 'averageScore' => $count ? $total / $count : null);
+            $groupTotal += $total; $groupCount += $count;
         }
         foreach ($data['participants'] as $person) {
             $has = $data['activeBeerId'] !== null && isset($data['scores'][$person['id']][$data['activeBeerId']]);
             if ($has) { $scored++; }
-            $participants[] = array('id' => $person['id'], 'name' => $person['name'], 'hasScored' => $has);
+            $total = 0; $count = 0;
+            foreach (($data['scores'][$person['id']] ?? array()) as $beerId => $score) {
+                if (isset($beerIds[$beerId])) { $total += $score; $count++; }
+            }
+            $participants[] = array('id' => $person['id'], 'name' => $person['name'], 'hasScored' => $has,
+                'scoreCount' => $count, 'totalScore' => $total, 'averageScore' => $count ? $total / $count : null);
         }
         return array('code' => $data['code'], 'name' => $data['name'], 'createdAt' => $data['createdAt'],
             'revision' => $data['revision'], 'activeBeerId' => $data['activeBeerId'], 'beers' => $beers,
             'participants' => $participants, 'participantCount' => count($participants), 'scoredCount' => $scored,
-            'missingCount' => $data['activeBeerId'] === null ? 0 : count($participants) - $scored);
+            'missingCount' => $data['activeBeerId'] === null ? 0 : count($participants) - $scored,
+            'groupAverageScore' => $groupCount ? $groupTotal / $groupCount : null, 'groupScoreCount' => $groupCount);
     }
     private static function identity($data, $token) {
         if (!is_string($token) || strlen($token) < 20 || strlen($token) > 200) { self::fail(401, 'Du må logge inn på smakingen på nytt.'); }
@@ -100,7 +111,9 @@ final class Datejust_Juleol_Domain {
                 }
                 $position = 1;
                 foreach ($data['beers'] as $beer) { $position = max($position, $beer['order'] + 1); }
-                $data['beers'][] = array('id' => self::id(), 'name' => $name, 'brewery' => $brewery, 'abv' => $abv, 'order' => $position);
+                $beerId = self::id();
+                $data['beers'][] = array('id' => $beerId, 'name' => $name, 'brewery' => $brewery, 'abv' => $abv, 'order' => $position);
+                $extra['beerId'] = $beerId;
                 break;
             case 'delete':
                 self::beer($data, $id);

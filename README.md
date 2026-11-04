@@ -10,7 +10,7 @@ Denne versjonen lagrer smakinger i WordPress-databasen og henter oppdateringer h
 
 Arrangøren kan legge til et valgfritt bilde av hvert øl. På mobil brukes «Ta bilde» for å fotografere ølet med kameraet, eller «Velg bilde» for et eksisterende bilde. «Ta bilde» ber nettleseren om kameraet på baksiden; på PC kan knappen åpne vanlig filvalg. Bildet vises i øllisten, på poengsiden og i TV-visningen. Opplastingen gjør bildet mindre og konverterer det til JPEG i nettleseren. Bare arrangørtilgangen kan endre bilder.
 
-Kjør `node scripts/build-wordpress.mjs` for å oppdatere WordPress-grensesnittet fra `public/`. Kjør `php test/wordpress-domain.test.php` for test av tilgang, poeng, runder og datalagringsformat. GitHub Actions kontrollerer også PHP- og JavaScript-syntaksen. Se `wordpress/datejust-juleol/README.txt` for drift og lagring.
+Gjengens kveldssnitt vises både per deltaker og samlet, slik som i Node-versjonen. Kjør `npm run build:wordpress` for å oppdatere WordPress-grensesnittet fra `public/`. PHP-testene kjøres med `php test/wordpress-domain.test.php`, `php test/wordpress-upload.test.php` og `php test/wordpress-averages.test.php`. GitHub Actions kontrollerer også PHP- og JavaScript-syntaksen. Se `wordpress/datejust-juleol/README.txt` for drift og lagring.
 
 ## Kom i gang
 
@@ -39,7 +39,7 @@ Ved utvikling kan du bruke `npm run dev` for automatisk omstart når serverkoden
 
 Velg et bilde når du legger til et øl, eller legg til og bytt bilde senere fra øllisten. Du kan også fjerne bildet uten å endre ølet eller poengene. Bildene vises for deltakerne og på TV-en.
 
-JPG, PNG og WebP støttes, opptil **10 MiB per bilde** og 40 millioner piksler. Serveren tilpasser bildene til maksimalt 1600 × 1600 piksler og lagrer dem som WebP. Kamerarotasjon korrigeres, og opprinnelige metadata fjernes. Bilder i for eksempel HEIC-format må først lagres som JPG eller PNG.
+JPG, PNG og WebP støttes, opptil **10 MiB per bilde** og 40 millioner piksler. Node-serveren tilpasser bildene til maksimalt 1600 × 1600 piksler og lagrer dem som WebP. WordPress-versjonen tilpasser bildene i nettleseren til maksimalt 400 × 400 piksler og sender JPEG til nettstedets opplastingsmappe. Kamerarotasjon korrigeres, og opprinnelige metadata fjernes. Bilder i for eksempel HEIC-format må først lagres som JPG eller PNG.
 
 ### Gjengens poeng
 
@@ -49,15 +49,15 @@ Arrangørtilgangen og deltakertilgangen huskes i nettleseren som opprettet dem. 
 
 ## QR-kode og nettadresse
 
-Hver smaking får automatisk en QR-kode på arrangørsiden og TV-visningen. Koden genereres på appens egen server og inneholder bare deltakerlenken. Den deler ingen arrangørtilgang og bruker ingen ekstern QR-tjeneste. Lenke og kode kan fortsatt brukes manuelt.
+Hver smaking får automatisk en QR-kode på arrangørsiden og TV-visningen. Koden genereres lokalt på appens server, eller i nettleseren i WordPress-versjonen, og inneholder bare deltakerlenken. Den deler ingen arrangørtilgang og bruker ingen ekstern QR-tjeneste. Lenke og kode kan fortsatt brukes manuelt.
 
 QR-koden bruker nettadressen i nettleseren. Åpne derfor appen på en adresse deltakerne kan nå før du viser koden. Ved `localhost` vises en påminnelse, fordi samme adresse på telefonen peker på telefonen selv. En QR-kode gjør ikke serveren offentlig tilgjengelig.
 
-For tilgang over Internett må appen publiseres på en tjeneste som støtter **Node.js 24, varig datalagring og langvarige HTTP-forbindelser**. Når appen får en offentlig HTTPS-adresse, bruker QR-kodene automatisk den adressen. En adresse på det lokale nettverket kan også brukes hvis alle enhetene er på samme nettverk og kan nå serveren.
+For tilgang over Internett kan WordPress-versjonen installeres på nettstedet. Node-versjonen trenger en tjeneste som støtter **Node.js 24, varig datalagring og langvarige HTTP-forbindelser**. Når appen får en offentlig HTTPS-adresse, bruker QR-kodene automatisk den adressen. En adresse på det lokale nettverket kan også brukes hvis alle enhetene er på samme nettverk og kan nå serveren.
 
 Appen ber søkemotorer om ikke å indeksere sidene. En skjult QR-lenke kan likevel deles videre av dem som kjenner den; selve QR-koden er ikke adgangskontroll. Arrangørhandlinger krever fortsatt nettleserens private arrangørtilgang.
 
-## Lagring og drift
+## Lagring og drift av Node-versjonen
 
 Appen bruker SQLite og trenger ingen ekstern databasetjeneste eller API-nøkler. Databasen opprettes ved første oppstart og inneholder både smakinger, poeng og opplastede bilder. Den er utelatt fra Git, sammen med installerte testavhengigheter. Eksisterende databaser oppdateres automatisk når appen starter.
 
@@ -85,6 +85,8 @@ npm run test:browser
 ```
 
 API-testene bruker isolerte, midlertidige databaser. Nettlesertesten starter sin egen server og bruker Chromium. I skymiljøet brukes `/usr/bin/chromium`. Sett `BROWSER_EXECUTABLE` til en annen Chromium-/Chrome-binær ved behov. Testene endrer ikke dataene til en kjørende smaking.
+
+`npm run test:browser:wordpress` tester det bygde WordPress-grensesnittet med riktig undermappe, QR-lenker, polling, tilgangshoder og JPEG-opplasting mot en lokal protokolladapter. PHP-testene kontrollerer WordPress-reglene og REST-adapteren separat. Dette erstatter ikke kontroll på et faktisk WordPress-nettsted etter installasjon.
 
 ## Filer
 

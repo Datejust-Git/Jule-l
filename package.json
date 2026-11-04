@@ -11,7 +11,9 @@
     "start": "node server.mjs",
     "dev": "node --watch server.mjs",
     "test": "node --test",
-    "test:browser": "node scripts/browser-smoke.mjs"
+    "test:browser": "node scripts/browser-smoke.mjs",
+    "test:browser:wordpress": "node scripts/browser-smoke.mjs --wordpress",
+    "build:wordpress": "node scripts/build-wordpress.mjs"
   },
   "devDependencies": {
     "jsqr": "1.4.0",

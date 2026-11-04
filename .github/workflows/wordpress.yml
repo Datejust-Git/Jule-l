@@ -2,16 +2,20 @@ name: WordPress app checks
 on:
   push:
     paths:
+      - 'public/**'
       - 'wordpress/**'
       - 'test/wordpress-domain.test.php'
       - 'test/wordpress-upload.test.php'
+      - 'test/wordpress-averages.test.php'
       - 'scripts/build-wordpress.mjs'
       - '.github/workflows/wordpress.yml'
   pull_request:
     paths:
+      - 'public/**'
       - 'wordpress/**'
       - 'test/wordpress-domain.test.php'
       - 'test/wordpress-upload.test.php'
+      - 'test/wordpress-averages.test.php'
       - 'scripts/build-wordpress.mjs'
       - '.github/workflows/wordpress.yml'
 permissions:
@@ -27,5 +31,11 @@ jobs:
         run: php test/wordpress-domain.test.php
       - name: Test authenticated photo uploads and validation
         run: php test/wordpress-upload.test.php
+      - name: Test participant and group evening averages
+        run: php test/wordpress-averages.test.php
       - name: Validate frontend syntax
         run: node --check wordpress/datejust-juleol/assets/app.js
+      - name: Verify shared frontend assets are up to date
+        run: |
+          node scripts/build-wordpress.mjs
+          git diff --exit-code -- wordpress/datejust-juleol/assets

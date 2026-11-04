@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Datejust Juleølsmaking
  * Description: Egen juleølapp med mobilpoeng, QR-kode og TV-visning på /juleolsmaking/. Ingen meny- eller temaendringer.
- * Version: 1.1.1
+ * Version: 1.2.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Kennel Datejust
@@ -148,11 +148,11 @@ final class Datejust_Juleol_App {
         header('X-Frame-Options: SAMEORIGIN');
         header('Referrer-Policy: same-origin');
         $nonce = base64_encode(random_bytes(18));
-        header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-$nonce'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'");
+        header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-$nonce'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'");
         $assets = plugins_url('assets/', __FILE__);
         $html = file_get_contents(__DIR__ . '/assets/index.html');
         $html = str_replace(array('href="/favicon.svg"', 'href="/styles.css"', 'src="/app.js"'),
-            array('href="' . esc_url($assets . 'favicon.svg') . '"', 'href="' . esc_url($assets . 'styles.css?ver=1.1.1') . '"', 'src="' . esc_url($assets . 'app.js?ver=1.1.1') . '"'), $html);
+            array('href="' . esc_url($assets . 'favicon.svg') . '"', 'href="' . esc_url($assets . 'styles.css?ver=1.2.0') . '"', 'src="' . esc_url($assets . 'app.js?ver=1.2.0') . '"'), $html);
         $config = array('base' => home_url('/juleolsmaking/'), 'api' => untrailingslashit(rest_url(self::NS)));
         $scripts = '<script nonce="' . esc_attr($nonce) . '">window.DATEJUST_JULEOL=' . wp_json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
         $scripts .= '<script src="' . esc_url($assets . 'qrcode.js') . '"></script>';

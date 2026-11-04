@@ -180,6 +180,8 @@
 .beer-image-preview { width: 64px; height: 75px; object-fit: contain; border-radius: 4px; background: #f3eee3; flex-shrink: 0; }
 .image-picker-actions { display: flex; gap: 17px; }
 .image-picker-actions .text-button { font-size: .62rem; }
+.image-picker-actions { flex-wrap: wrap; gap: 4px 17px; }
+.image-picker-actions .icon { width: 14px; height: 14px; }
 .image-picker-actions .text-button:last-child { color: #8d8476; }
 .beer-photo-active { width: 145px; height: 180px; margin: 21px auto 18px; padding: 8px; background: #f7f4ec; border-color: #ece5d7; border-radius: 10px; }
 .beer-photo-active .beer-photo-placeholder > .icon { width: 48px; height: 48px; color: var(--wine); }

@@ -12,7 +12,10 @@ import { createApp } from '../server.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = await mkdtemp(join(tmpdir(), 'juleol-browser-'));
-const app = createApp({ dataDir, publicDir: join(root, 'public'), rateLimit: false });
+const wordpressMode = process.argv.includes('--wordpress');
+const app = wordpressMode
+  ? await (await import('./wordpress-browser-fixture.mjs')).createWordPressFixture({ dataDir })
+  : createApp({ dataDir, publicDir: join(root, 'public'), rateLimit: false });
 let browser;
 const errors = [];
 const shots = join(root, 'test-results');
@@ -22,6 +25,10 @@ try {
     app.server.listen(0, '127.0.0.1', done);
   });
   const origin = `http://127.0.0.1:${app.server.address().port}`;
+  const home = `${origin}${wordpressMode ? '/juleolsmaking/' : '/'}`;
+  const apiBase = wordpressMode ? '/wp-json/datejust-juleol/v1' : '/api';
+  const uploadMethod = wordpressMode ? 'POST' : 'PUT';
+  const deleteImageMethod = wordpressMode ? 'POST' : 'DELETE';
   const executablePath = process.env.BROWSER_EXECUTABLE || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
   browser = await chromium.launch({ executablePath, headless: true });
   const hostContext = await browser.newContext({ viewport: { width: 1440, height: 1100 } });
@@ -37,13 +44,13 @@ try {
   }
 
   await mkdir(shots, { recursive: true });
-  await host.goto(origin);
+  await host.goto(home);
   await host.getByRole('heading', { level: 1 }).waitFor();
   await host.screenshot({ path: join(shots, 'forside.png'), fullPage: true });
   await host.getByLabel('Hva heter smakingen?').fill('Juleølkvelden');
   let captureCreation;
   const creation = new Promise(done => { captureCreation = done; });
-  await host.route('**/api/sessions', async route => {
+  await host.route(`**${apiBase}/sessions`, async route => {
     const response = await route.fetch();
     captureCreation(await response.json());
     await route.fulfill({ response });
@@ -52,7 +59,7 @@ try {
   const created = await creation;
   const { code, adminToken } = created;
   assert.match(code, /^[A-Z0-9]{6}$/);
-  await host.waitForURL(`**/?view=host&code=${code}`);
+  await host.waitForURL(`${home}?view=host&code=${code}`);
   await host.getByRole('heading', { name: 'Juleølkvelden', exact: true }).waitFor();
 
   async function scanQr(page) {
@@ -62,7 +69,7 @@ try {
     const png = PNG.sync.read(await image.screenshot());
     const decoded = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
     assert.ok(decoded, 'Den viste QR-koden må kunne skannes.');
-    assert.equal(decoded.data, `${origin}/?view=join&code=${code}`);
+    assert.equal(decoded.data, `${home}?view=join&code=${code}`);
     assert.ok(!decoded.data.includes(adminToken), 'QR-koden skal bare dele deltakerlenken.');
     return decoded.data;
   }
@@ -100,7 +107,7 @@ try {
   }
   await joinTasting(ida, 'Ida');
   await joinTasting(morten, 'Morten');
-  await tv.goto(`${origin}/?view=tv&code=${code}`);
+  await tv.goto(`${home}?view=tv&code=${code}`);
   await tv.locator('.people-list').getByText('Morten', { exact: true }).waitFor();
   await scanQr(tv);
 
@@ -158,7 +165,7 @@ try {
   // Replacing and removing a photo must update every device and retain the votes.
   const beerRow = host.locator('.beer-list-item').filter({ hasText: 'Nissebokk <vinter>' });
   const previousImage = await tv.getByTestId('active-beer-image').getAttribute('src');
-  const photoSaved = host.waitForResponse(response => response.request().method() === 'PUT' && /\/image$/.test(new URL(response.url()).pathname));
+  const photoSaved = host.waitForResponse(response => response.request().method() === uploadMethod && /\/image$/.test(new URL(response.url()).pathname));
   await beerRow.getByTestId('beer-image-input').setInputFiles(replacementPhoto);
   assert.equal((await photoSaved).status(), 200);
   await tv.waitForFunction(old => document.querySelector('[data-testid="active-beer-image"]')?.getAttribute('src') !== old, previousImage);
@@ -167,12 +174,12 @@ try {
   await host.reload();
   await host.getByRole('heading', { name: 'Juleølkvelden', exact: true }).waitFor();
   await beerRow.locator('img').evaluate(img => img.decode());
-  const photoDeleted = host.waitForResponse(response => response.request().method() === 'DELETE' && /\/image$/.test(new URL(response.url()).pathname));
+  const photoDeleted = host.waitForResponse(response => response.request().method() === deleteImageMethod && /\/image$/.test(new URL(response.url()).pathname));
   await beerRow.getByRole('button', { name: /Fjern bilde/ }).click();
   assert.equal((await photoDeleted).status(), 200);
   await tv.getByTestId('active-beer-image').waitFor({ state: 'detached' });
   await ida.getByTestId('active-beer-image').waitFor({ state: 'detached' });
-  const photoRestored = host.waitForResponse(response => response.request().method() === 'PUT' && /\/image$/.test(new URL(response.url()).pathname));
+  const photoRestored = host.waitForResponse(response => response.request().method() === uploadMethod && /\/image$/.test(new URL(response.url()).pathname));
   await beerRow.getByTestId('beer-image-input').setInputFiles(photo);
   assert.equal((await photoRestored).status(), 200);
   await tv.getByTestId('active-beer-image').evaluate(img => img.decode());
@@ -191,7 +198,7 @@ try {
   const intercepted = new Promise(done => { captured = done; });
   let release;
   const responseGate = new Promise(done => { release = done; });
-  const scoreUrl = `**/api/sessions/${code}/scores`;
+  const scoreUrl = `**${apiBase}/sessions/${code}/scores`;
   await ida.route(scoreUrl, async route => {
     const response = await route.fetch();
     captured();
@@ -229,7 +236,7 @@ try {
   }
   // Also check the public entry screen on a narrow phone.
   const phoneHome = await firstContext.newPage();
-  await phoneHome.goto(origin);
+  await phoneHome.goto(home);
   await phoneHome.getByRole('heading', { level: 1 }).waitFor();
   assert.equal(await phoneHome.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await phoneHome.screenshot({ path: join(shots, 'forside-mobil.png'), fullPage: true });

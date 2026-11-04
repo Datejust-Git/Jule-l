@@ -1,4 +1,4 @@
-Datejust Juleølsmaking 1.1.1
+Datejust Juleølsmaking 1.2.0
 
 Install the ZIP containing this directory as a WordPress plugin, then activate it.
 The app is served at /juleolsmaking/ with no menu, theme or homepage changes.
@@ -18,6 +18,14 @@ reduces the image to 400 pixels and exports JPEG before uploading. The endpoint
 requires the host token, validates size, type and dimensions, and stores the
 JPEG with a random name in WordPress uploads. Only the image URL is in live state.
 Removing or replacing a photo preserves its uploaded file; no media is deleted.
+
+The evening overview shows each participant's average given score and number of
+beers rated. The group average weights every submitted rating equally. Missing
+ratings are excluded; editing a vote replaces its earlier contribution.
+
+Build shared UI assets with npm run build:wordpress. Validate the PHP domain,
+REST uploads and averages with test/wordpress-domain.test.php,
+test/wordpress-upload.test.php and test/wordpress-averages.test.php.
 
 Host access stays in the browser that created the tasting. Joining needs the
 six-character code. Participants can see names and results, so use first names

@@ -1,0 +1,22 @@
+Datejust Juleølsmaking 1.0.0
+
+Install the ZIP containing this directory as a WordPress plugin, then activate it.
+The app is served at /juleolsmaking/ with no menu, theme or homepage changes.
+The path is an isolated app page; it is not a WordPress post, so no page list or
+standard sitemap entry is created. The response also sets noindex/nofollow.
+
+The original Norwegian UI is built from public/ with scripts/build-wordpress.mjs.
+WordPress stores sessions in its own datejust_juleol database table (InnoDB).
+Row locks protect simultaneous scoring. Tokens are stored as SHA-256 hashes.
+Phones and TV poll for updates every 2.5 seconds (6 seconds in background tabs).
+QR codes are generated locally in the browser; no external QR service is used.
+
+Host access stays in the browser that created the tasting. Joining needs the
+six-character code. Participants can see names and results, so use first names
+or nicknames. The page is accessible to people who know its address.
+
+Deactivation disables this app only and preserves tasting data. Uninstall does
+not automatically delete the table. Existing content and navigation are untouched.
+
+QR generator: Kazuhiko Arase, https://github.com/kazuhikoarase/qrcode-generator
+Distributed under the MIT license; see assets/LICENSE-qrcode.txt.

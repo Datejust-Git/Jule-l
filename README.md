@@ -45,7 +45,20 @@ JPG, PNG og WebP støttes, opptil **10 MiB per bilde** og 40 millioner piksler. 
 
 Gjengens oversikt viser hvor mange øl hver deltaker har vurdert og gjennomsnittet vedkommende har gitt gjennom kvelden. Kveldens samlede snitt beregnes av alle registrerte vurderinger. Manglende vurderinger teller ikke som null, og endringer erstatter den tidligere vurderingen.
 
-Arrangørtilgangen og deltakertilgangen huskes i nettleseren som opprettet dem. Bruk samme nettleser for å fortsette senere. Ikke slett nettleserdata under en smaking. Koden gir innsyn i smakingens navn, deltakernavn og resultater; del den bare med dem som skal delta. Bruk gjerne fornavn eller kallenavn.
+Arrangørtilgangen og deltakertilgangen huskes i nettleseren som opprettet dem. Ikke slett nettleserdata under en smaking. Koden gir innsyn i smakingens navn, deltakernavn og resultater; del den bare med dem som skal delta. Bruk gjerne fornavn eller kallenavn.
+
+### Arrangør på flere enheter
+
+1. Åpne smakingen på enheten som allerede har arrangørtilgang.
+2. Finn **Flere arrangørenheter** og velg **Lag arrangørkode**.
+3. Åpne appen på en annen mobil, PC eller et nettbrett og velg **Fortsett som arrangør**.
+4. Skriv inn **koden til smakingen** og den separate **arrangørkoden**.
+
+Begge enhetene kan nå legge inn øl, håndtere bilder og styre rundene i den samme smakingen. Endringer oppdateres på de andre enhetene. Hver enhet får sin egen tilgang som huskes etter at siden lastes på nytt.
+
+Arrangørkoden vises bare etter at den er laget og kan kopieres fra arrangørsiden. Den lagres ikke i nettleseren og blir ikke med i deltakerlenken eller QR-koden. Lag en ny kode hvis du trenger den igjen etter at siden er lastet på nytt. En ny kode erstatter den gamle for nye innlogginger; enheter som allerede er logget inn, beholder tilgangen. Del arrangørkoden bare med dem som skal styre smakingen.
+
+Dette fungerer også med eksisterende smakinger etter oppdatering: den opprinnelige arrangøren åpner smakingen og lager en arrangørkode. Øl, bilder, deltakere og poeng beholdes. Den vanlige deltakerkoden alene gir ikke arrangørtilgang.
 
 ## QR-kode og nettadresse
 

@@ -18,7 +18,7 @@ const app = wordpressMode
   : createApp({ dataDir, publicDir: join(root, 'public'), rateLimit: false });
 let browser;
 const errors = [];
-const shots = join(root, 'test-results');
+const shots = join(root, 'test-results', wordpressMode ? 'wordpress' : 'node');
 try {
   await new Promise((done, reject) => {
     app.server.once('error', reject);
@@ -35,8 +35,9 @@ try {
   const firstContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const secondContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const tvContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
-  const [host, ida, morten, tv] = await Promise.all([hostContext.newPage(), firstContext.newPage(), secondContext.newPage(), tvContext.newPage()]);
-  for (const page of [host, ida, morten, tv]) {
+  const otherHostContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const [host, ida, morten, tv, otherHost] = await Promise.all([hostContext.newPage(), firstContext.newPage(), secondContext.newPage(), tvContext.newPage(), otherHostContext.newPage()]);
+  for (const page of [host, ida, morten, tv, otherHost]) {
     page.setDefaultTimeout(10_000);
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -61,6 +62,24 @@ try {
   assert.match(code, /^[A-Z0-9]{6}$/);
   await host.waitForURL(`${home}?view=host&code=${code}`);
   await host.getByRole('heading', { name: 'Juleølkvelden', exact: true }).waitFor();
+  await host.getByTestId('generate-host-code').click();
+  await host.getByTestId('host-code').waitFor();
+  const hostCode = (await host.getByTestId('host-code').innerText()).replace(/[\s-]/g, '');
+  assert.match(hostCode, /^[A-Z2-9]{8}$/);
+  await otherHost.goto(home);
+  await otherHost.getByRole('link', { name: 'Fortsett som arrangør', exact: true }).click();
+  const hostLogin = otherHost.getByTestId('host-login-form');
+  await hostLogin.getByLabel('Kode til smakingen').fill(code);
+  await hostLogin.getByLabel('Arrangørkode', { exact: true }).fill(hostCode);
+  await hostLogin.getByRole('button', { name: 'Logg inn som arrangør', exact: true }).click();
+  await otherHost.waitForURL(`${home}?view=host&code=${code}`);
+  await otherHost.getByRole('heading', { name: 'Juleølkvelden', exact: true }).waitFor();
+  assert.equal(await otherHost.getByTestId('host-login-form').count(), 0);
+  const otherAdminToken = await otherHost.evaluate(key => localStorage.getItem(key) || sessionStorage.getItem(key), `juleol:admin:${code}`);
+  assert.ok(otherAdminToken && otherAdminToken !== adminToken, 'Hver arrangørenhet må få sin egen tilgang.');
+  await otherHost.getByTestId('generate-host-code').click();
+  await otherHost.getByTestId('host-code').waitFor();
+  await host.getByTestId('host-code').waitFor({ state: 'detached' });
 
   async function scanQr(page) {
     const image = page.getByTestId('join-qr');
@@ -71,6 +90,7 @@ try {
     assert.ok(decoded, 'Den viste QR-koden må kunne skannes.');
     assert.equal(decoded.data, `${home}?view=join&code=${code}`);
     assert.ok(!decoded.data.includes(adminToken), 'QR-koden skal bare dele deltakerlenken.');
+    assert.ok(!decoded.data.includes(hostCode), 'Deltakerens QR-kode skal ikke dele arrangørkoden.');
     return decoded.data;
   }
   const scannedJoinUrl = await scanQr(host);
@@ -79,21 +99,21 @@ try {
   const photo = { name: 'julebokk.png', mimeType: 'image/png', buffer: await sharp(bottle('#354b40')).png().toBuffer() };
   const replacementPhoto = { name: 'nytt-bilde.jpg', mimeType: 'image/jpeg', buffer: await sharp(bottle('#353d62')).jpeg().toBuffer() };
 
-  async function addBeer(name, brewery, abv, image) {
-    const form = host.locator('[data-form="beer"]');
+  async function addBeer(name, brewery, abv, image, page = host) {
+    const form = page.locator('[data-form="beer"]');
     await form.locator('[name="name"]').fill(name);
     await form.locator('[name="brewery"]').fill(brewery);
     await form.locator('[name="abv"]').fill(abv);
     if (image) {
-      await host.getByTestId('new-beer-image').setInputFiles(image);
-      await host.getByTestId('beer-image-preview').evaluate(img => img.decode());
+      await page.getByTestId('new-beer-image').setInputFiles(image);
+      await page.getByTestId('beer-image-preview').evaluate(img => img.decode());
     }
     await form.getByRole('button', { name: 'Legg til', exact: true }).click();
-    await host.locator('.beer-list-item').filter({ hasText: name }).waitFor();
-    await host.waitForFunction(() => document.querySelector('#beer-name').value === '');
-    if (image) await host.locator('.beer-list-item').filter({ hasText: name }).locator('img').evaluate(img => img.decode());
+    await page.locator('.beer-list-item').filter({ hasText: name }).waitFor();
+    await page.waitForFunction(() => document.querySelector('#beer-name').value === '');
+    if (image) await page.locator('.beer-list-item').filter({ hasText: name }).locator('img').evaluate(img => img.decode());
   }
-  await addBeer('Nissebokk <vinter>', 'Nordlys bryggeri', '6.5', photo);
+  await addBeer('Nissebokk <vinter>', 'Nordlys bryggeri', '6.5', photo, otherHost);
   await addBeer('Julenatt', 'Fjell & fjord', '7.2');
   assert.equal(await host.locator('.beer-list-item').count(), 2);
 
@@ -117,7 +137,7 @@ try {
   await host.getByTestId('new-beer-image').setInputFiles(replacementPhoto);
   await host.getByTestId('beer-image-preview').evaluate(img => img.decode());
   await ida.reload();
-  const openRound = host.locator('.beer-list-item').filter({ hasText: 'Nissebokk <vinter>' }).getByRole('button', { name: 'Start runde' });
+  const openRound = otherHost.locator('.beer-list-item').filter({ hasText: 'Nissebokk <vinter>' }).getByRole('button', { name: 'Start runde' });
   await openRound.click();
   await ida.getByRole('heading', { name: 'Nissebokk <vinter>', exact: true }).waitFor();
   assert.equal(await host.getByLabel('Navn på ølet').inputValue(), 'Et utkast som skal beholdes');
@@ -209,6 +229,7 @@ try {
   await ida.locator('.submit-score').click();
   await intercepted;
   await host.locator('.beer-list-item').filter({ hasText: 'Julenatt' }).getByRole('button', { name: 'Start runde' }).click();
+  await otherHost.getByRole('heading', { name: 'Julenatt', exact: true }).waitFor();
   await ida.getByRole('heading', { name: 'Julenatt', exact: true }).waitFor();
   release();
   await delayedResponse;
@@ -227,11 +248,45 @@ try {
   await ida.reload();
   await ida.getByText('Du har gitt 9 poeng. Du kan endre mens runden er åpen.', { exact: true }).waitFor();
   await host.reload();
-  await host.getByRole('button', { name: 'Avslutt runden' }).click();
+  // A slow private-code response must not resurrect a code another host replaced.
+  const hostCodeRoute = `**${apiBase}/sessions/${code}/host-code`;
+  let codeIntercepted;
+  const capturedCode = new Promise(done => { codeIntercepted = done; });
+  let releaseCode;
+  const codeGate = new Promise(done => { releaseCode = done; });
+  let delayedHostCode;
+  await host.route(hostCodeRoute, async route => {
+    const response = await route.fetch();
+    delayedHostCode = (await response.json()).hostCode;
+    codeIntercepted();
+    await codeGate;
+    await route.fulfill({ response });
+  });
+  await host.getByTestId('generate-host-code').click();
+  await capturedCode;
+  await otherHost.getByTestId('generate-host-code').click();
+  await otherHost.getByTestId('host-code').waitFor();
+  await addBeer('Midlertidig kontrolløl', '', '', undefined, otherHost);
+  await host.locator('.beer-list-item').filter({ hasText: 'Midlertidig kontrolløl' }).waitFor();
+  releaseCode();
+  await host.waitForFunction(() => !document.querySelector('[data-testid="generate-host-code"]').disabled);
+  assert.equal(await host.getByTestId('host-code').count(), 0, 'Et forsinket svar må ikke vise en foreldet arrangørkode.');
+  await host.unroute(hostCodeRoute);
+  await otherHost.locator('.beer-list-item').filter({ hasText: 'Midlertidig kontrolløl' }).getByRole('button', { name: 'Fjern Midlertidig kontrolløl', exact: true }).click();
+  await host.locator('.beer-list-item').filter({ hasText: 'Midlertidig kontrolløl' }).waitFor({ state: 'detached' });
+  await host.getByTestId('generate-host-code').click();
+  await host.getByTestId('host-code').waitFor();
+  const newHostCode = (await host.getByTestId('host-code').innerText()).replace(/[\s-]/g, '');
+  assert.notEqual(newHostCode, hostCode);
+  assert.notEqual(newHostCode, delayedHostCode);
+  await otherHost.getByTestId('host-code').waitFor({ state: 'detached' });
+  await otherHost.reload();
+  await otherHost.getByRole('heading', { name: 'Juleølkvelden', exact: true }).waitFor();
+  await otherHost.getByRole('button', { name: 'Avslutt runden' }).click();
   await ida.locator('.waiting-card').waitFor();
   assert.equal(await ida.locator('[data-form="score"]').count(), 0);
 
-  for (const page of [host, ida, morten, tv]) {
+  for (const page of [host, ida, morten, tv, otherHost]) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Visningen må passe skjermbredden.');
   }
   // Also check the public entry screen on a narrow phone.
@@ -254,8 +309,11 @@ try {
   assert.equal(unauthorized.status, 401);
   // Confirm no token was accidentally exposed in public state.
   assert.ok(!JSON.stringify(result).includes(adminToken));
+  assert.ok(!JSON.stringify(result).includes(otherAdminToken));
+  assert.ok(!JSON.stringify(result).includes(hostCode));
+  assert.ok(!JSON.stringify(result).includes(newHostCode));
   assert.deepEqual(errors, [], `Nettleserfeil: ${errors.join('; ')}`);
-  console.log('Nettlesertest bestått: bildeopplasting/forhåndsvisning/bytte/fjerning, bilder på mobil/TV, deltaker- og gruppesnitt, QR-innmelding, øl, poengendring, runder, gjenåpning og responsive visninger.');
+  console.log('Nettlesertest bestått: flere arrangørenheter med egen kode, delte runder og kodebytte, bilder, deltaker- og gruppesnitt, QR-innmelding, poeng, gjenåpning og responsive visninger.');
   console.log(`Skjermbilder: ${shots}`);
 } finally {
   await browser?.close();

@@ -1,4 +1,4 @@
-Datejust Juleølsmaking 1.2.0
+Datejust Juleølsmaking 1.3.0
 
 Install the ZIP containing this directory as a WordPress plugin, then activate it.
 The app is served at /juleolsmaking/ with no menu, theme or homepage changes.
@@ -27,9 +27,18 @@ Build shared UI assets with npm run build:wordpress. Validate the PHP domain,
 REST uploads and averages with test/wordpress-domain.test.php,
 test/wordpress-upload.test.php and test/wordpress-averages.test.php.
 
-Host access stays in the browser that created the tasting. Joining needs the
-six-character code. Participants can see names and results, so use first names
-or nicknames. The page is accessible to people who know its address.
+Host access is remembered separately on each authorized device. An existing host
+can generate a private organizer code, then another device selects "Fortsett som
+arrangør" and enters the tasting code plus the organizer code. Each device gets
+its own random access token; the original host remains authorized. New organizer
+codes replace old codes for future sign-ins without logging existing hosts out.
+The organizer code is shown only when generated, stays in page memory, and never
+enters participant links or QR codes. Existing tastings can enable this without
+losing votes or photos. Test this with test/wordpress-host-access.test.php.
+
+Joining as a participant needs the six-character tasting code. Participants can
+see names and results, so use first names or nicknames. The page is accessible
+to people who know its address. The tasting code alone does not grant host access.
 
 Deactivation disables this app only and preserves tasting data. Uninstall does
 not automatically delete the table. Existing content and navigation are untouched.

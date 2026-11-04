@@ -28,11 +28,16 @@ final class Datejust_Juleol_Domain {
         for ($i = 0; $i < 6; $i++) { $result .= $alphabet[random_int(0, strlen($alphabet) - 1)]; }
         return $result;
     }
+    private static function new_host_code() {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; $result = '';
+        for ($i = 0; $i < 8; $i++) { $result .= $alphabet[random_int(0, strlen($alphabet) - 1)]; }
+        return $result;
+    }
     public static function create($input, $code) {
         $token = self::token();
         $data = array('code' => $code, 'name' => self::text($input['name'] ?? null, 'Navnet på smakingen', 80),
             'adminHash' => hash('sha256', $token), 'activeBeerId' => null, 'createdAt' => self::now(),
-            'revision' => 0, 'beers' => array(), 'participants' => array(), 'scores' => array());
+            'revision' => 0, 'hostCodeGeneration' => 0, 'beers' => array(), 'participants' => array(), 'scores' => array());
         return array($data, array('code' => $code, 'adminToken' => $token, 'session' => self::session($data)));
     }
     public static function session($data) {
@@ -60,7 +65,8 @@ final class Datejust_Juleol_Domain {
                 'scoreCount' => $count, 'totalScore' => $total, 'averageScore' => $count ? $total / $count : null);
         }
         return array('code' => $data['code'], 'name' => $data['name'], 'createdAt' => $data['createdAt'],
-            'revision' => $data['revision'], 'activeBeerId' => $data['activeBeerId'], 'beers' => $beers,
+            'revision' => $data['revision'], 'hostCodeGeneration' => (int) ($data['hostCodeGeneration'] ?? 0),
+            'activeBeerId' => $data['activeBeerId'], 'beers' => $beers,
             'participants' => $participants, 'participantCount' => count($participants), 'scoredCount' => $scored,
             'missingCount' => $data['activeBeerId'] === null ? 0 : count($participants) - $scored,
             'groupAverageScore' => $groupCount ? $groupTotal / $groupCount : null, 'groupScoreCount' => $groupCount);
@@ -69,6 +75,9 @@ final class Datejust_Juleol_Domain {
         if (!is_string($token) || strlen($token) < 20 || strlen($token) > 200) { self::fail(401, 'Du må logge inn på smakingen på nytt.'); }
         $digest = hash('sha256', $token);
         if (hash_equals($data['adminHash'], $digest)) { return array('role' => 'admin'); }
+        foreach (($data['adminHashes'] ?? array()) as $adminHash) {
+            if (hash_equals($adminHash, $digest)) { return array('role' => 'admin'); }
+        }
         foreach ($data['participants'] as $person) {
             if (hash_equals($person['tokenHash'], $digest)) { return array('role' => 'participant', 'participantId' => $person['id']); }
         }
@@ -85,11 +94,32 @@ final class Datejust_Juleol_Domain {
     }
     public static function mutate(&$data, $action, $input, $token = null, $id = null) {
         $extra = array();
-        if ($action !== 'join') {
+        if ($action !== 'join' && $action !== 'host-login') {
             $identity = self::identity($data, $token);
             if ($action !== 'scores' && $identity['role'] !== 'admin') { self::fail(403, 'Bare arrangøren kan gjøre dette.'); }
         }
         switch ($action) {
+            case 'host-code':
+                $hostCode = self::new_host_code();
+                $data['hostCodeHash'] = hash('sha256', $hostCode);
+                $data['hostCodeGeneration'] = (int) ($data['hostCodeGeneration'] ?? 0) + 1;
+                $extra = array('hostCode' => $hostCode);
+                break;
+            case 'host-login':
+                $hostCode = isset($input['hostCode']) && is_string($input['hostCode'])
+                    ? preg_replace('/[\s-]+/u', '', $input['hostCode']) : '';
+                $hostCode = is_string($hostCode) ? strtoupper($hostCode) : '';
+                if (!preg_match('/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/D', $hostCode)
+                    || empty($data['hostCodeHash']) || !hash_equals($data['hostCodeHash'], hash('sha256', $hostCode))) {
+                    self::fail(401, 'Vertskoden er feil. Kontroller koden og prøv igjen.');
+                }
+                $adminHashes = $data['adminHashes'] ?? array();
+                if (count($adminHashes) >= 100) { self::fail(409, 'Smakingen har nådd grensen på 100 ekstra arrangørtilganger.'); }
+                $adminToken = self::token();
+                $adminHashes[] = hash('sha256', $adminToken);
+                $data['adminHashes'] = $adminHashes;
+                $extra = array('adminToken' => $adminToken);
+                break;
             case 'join':
                 $name = self::text($input['name'] ?? null, 'Navnet ditt', 40);
                 $key = class_exists('Normalizer') ? Normalizer::normalize($name, Normalizer::FORM_KC) : $name;

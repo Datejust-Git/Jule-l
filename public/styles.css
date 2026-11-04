@@ -85,6 +85,43 @@
 }
 
 /* Beer photos stay whole so labels on bottles and cans remain readable. */
+.host-continue-link { display: flex; width: fit-content; margin: 17px auto 0; padding-top: 15px; border-top: 1px solid var(--line); font-size: .69rem; font-weight: 500; }
+.host-access-panel { padding: 24px 22px; }
+.host-access-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: #ede9de; color: #8e7952; margin-bottom: 17px; }
+.host-access-icon > .icon { width: 19px; height: 19px; }
+.host-access-panel > .eyebrow { font-size: .5rem; letter-spacing: .1em; color: var(--muted); }
+.host-access-panel h2 { font-size: 1.5rem; line-height: 1.2; letter-spacing: -.3px; margin-top: 7px; }
+.host-access-panel > p { font-size: .7rem; color: var(--muted); line-height: 1.85; margin-top: 13px; }
+.host-access-panel > .button { font-size: .68rem; padding: 11px 9px; min-height: 39px; margin-top: 17px; }
+.host-access-panel > .button > .icon { width: 15px; height: 15px; }
+.private-host-code { border: 1px dashed #c9b99a; border-radius: 7px; padding: 14px 9px 10px; text-align: center; margin-top: 18px; background: #f5f0e5; }
+.private-host-code > span { display: block; color: #8c7956; font-size: .5rem; letter-spacing: .1em; }
+.private-host-code > strong { display: block; font-size: 1.55rem; letter-spacing: .065em; line-height: 1.6; font-weight: 600; color: var(--wine); user-select: all; }
+.private-host-code > .text-button { font-size: .61rem; }
+.private-host-code > .text-button > .icon { width: 13px; height: 13px; }
+.host-access-panel > .host-code-instructions { font-size: .64rem; }
+.host-code-instructions a { color: var(--wine); text-decoration: underline; text-underline-offset: 3px; }
+.host-code-instructions strong { color: #6e624a; letter-spacing: .05em; font-weight: 600; }
+.host-access-panel > .host-code-note { font-size: .6rem; line-height: 1.8; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line); color: #9a927f; }
+.host-login-card .input-help { font-size: .68rem; margin-bottom: 4px; }
+.host-login-card .host-participant-link { margin-top: 23px; font-size: .65rem; line-height: 1.7; }
+.host-login-card .host-participant-link > .icon { width: 14px; height: 14px; }
+.host-login-error { font-size: .73rem; line-height: 1.8; color: #903d37; background: #faf0e9; border: 1px solid #e4c7bb; border-radius: 6px; padding: 12px 13px; text-align: left; margin: -3px 0 21px; }
+@media (max-width: 700px) {
+  .host-continue-link { font-size: .71rem; }
+  .host-access-panel { padding: 24px 22px; }
+  .host-access-panel h2 { font-size: 1.7rem; }
+  .host-access-panel > p { font-size: .76rem; }
+  .host-access-panel > .eyebrow { font-size: .55rem; }
+  .host-access-panel > .button { font-size: .75rem; min-height: 42px; }
+  .private-host-code { padding: 17px 12px 12px; }
+  .private-host-code > span { font-size: .55rem; }
+  .private-host-code > strong { font-size: 2rem; }
+  .private-host-code > .text-button { font-size: .69rem; }
+  .host-access-panel > .host-code-instructions { font-size: .71rem; }
+  .host-access-panel > .host-code-note { font-size: .65rem; }
+  .host-login-card .host-participant-link { font-size: .63rem; }
+}
 .group-average-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 24px 25px 0; }
 .group-average-heading .eyebrow { color: var(--muted); font-size: .55rem; }
 .group-average-heading h2 { font-size: 1.7rem; margin-top: 5px; letter-spacing: -.35px; }

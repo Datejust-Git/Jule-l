@@ -2,7 +2,7 @@ const app = document.querySelector('#app');
 const params = new URLSearchParams(location.search);
 const view = ['host', 'join', 'tv'].includes(params.get('view')) ? params.get('view') : 'home';
 const code = (params.get('code') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-const state = { session: null, me: null, loading: view !== 'home', error: '', tab: params.has('code') ? 'join' : 'create', online: true, pending: '', qrFailed: false, ratings: {}, drafts: {}, recent: [], saved: {}, newBeerImage: null, failedImages: new Set() };
+const state = { session: null, me: null, loading: view !== 'home', error: '', tab: params.has('code') ? 'join' : 'create', online: true, pending: '', qrFailed: false, ratings: {}, drafts: {}, recent: [], saved: {}, newBeerImage: null, failedImages: new Set(), privateHostCode: '', privateHostCodeGeneration: null, hostLoginError: '' };
 let source;
 let toastTimer;
 let meRequest = 0;
@@ -32,6 +32,11 @@ function requireStorage() {
 function acceptSession(incoming) {
   if (!state.session || incoming.revision >= state.session.revision) {
     if (!state.session || incoming.revision > state.session.revision) state.failedImages.clear();
+    if (state.privateHostCodeGeneration !== null && incoming.hostCodeGeneration !== state.privateHostCodeGeneration) {
+      state.privateHostCode = '';
+      state.privateHostCodeGeneration = null;
+      document.querySelector('[data-private-host-code-copy]')?.closest('.toast')?.remove();
+    }
     state.session = incoming;
     return true;
   }
@@ -63,6 +68,7 @@ function icon(name, className = '') {
     chevron: '<path d="m9 5 7 7-7 7"/>',
     star: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/>',
     camera: '<path d="M4 7h4l2-3h4l2 3h4v13H4Z"/><circle cx="12" cy="13" r="4"/>',
+    key: '<circle cx="8" cy="9" r="4"/><path d="m11 12 9 9m-5-5 3-3m-1 5 3-3"/>',
     image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 16 5-5 5 5 3-3 5 5"/>',
   };
   return `<svg class="icon ${className}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths[name] || paths.star}</svg>`;
@@ -77,7 +83,7 @@ function home() {
   let recent = [];
   try { recent = JSON.parse(read('juleol:recent') || '[]'); } catch { /* New browser. */ }
   if (!Array.isArray(recent)) recent = [];
-  return `${header()}<main id="main" class="home-main"><section class="hero"><div class="hero-intro"><div class="eyebrow"><span class="tiny-star">${icon('star')}</span> SAMLE GJENGEN. FINN FAVORITTEN.</div><h1>Julens beste øl?<br>Det avgjør <em>dere.</em></h1><p class="hero-description">Noen er mørke. Noen er krydrede. Alle har en mening. Samle vennene til juleølsmaking og la poengene tale.</p><div class="hero-art-wrap">${beerArt()}<div class="art-caption"><span>01 — 10</span><span>Små slurker.<br>Store meninger.</span></div></div></div><section class="start-card" id="start" aria-label="Start eller bli med på en smaking"><div class="card-kicker">DET BEGYNNER RUNDT BORDET</div><h2>Gjør klart for en<br>smakfull kveld.</h2><div class="tabs" role="tablist" aria-label="Velg hvordan du vil bli med"><button id="tab-create" type="button" role="tab" aria-selected="${state.tab === 'create'}" aria-controls="start-form" class="tab ${state.tab === 'create' ? 'active' : ''}" data-action="create-tab">Arranger smaking</button><button id="tab-join" type="button" role="tab" aria-selected="${state.tab === 'join'}" aria-controls="start-form" class="tab ${state.tab === 'join' ? 'active' : ''}" data-action="join-tab">Bli med</button></div><div id="start-form" role="tabpanel" aria-labelledby="tab-${state.tab}">${state.tab === 'create' ? `<form data-form="create" class="stack-form"><label for="session-name">Hva heter smakingen?</label><input id="session-name" name="name" maxlength="80" required placeholder="F.eks. Juleøl hos oss" autocomplete="off"><p class="input-help">Du legger til ølene etterpå. Deltakerne blir med med en kode.</p><button class="button button-primary button-block" ${state.pending ? 'disabled' : ''}>${state.pending === 'create' ? 'Gjør klart …' : 'Opprett smaking '+icon('arrow')}</button></form>` : `<form data-form="join" class="stack-form"><label for="join-code">Kode til smakingen</label><input id="join-code" class="code-input" name="code" maxlength="8" required placeholder="ABC123" value="${esc(code)}" autocapitalize="characters" autocomplete="off" spellcheck="false"><label for="join-name">Navnet ditt</label><input id="join-name" name="name" maxlength="40" required placeholder="F.eks. Nora" autocomplete="given-name"><button class="button button-primary button-block" ${state.pending ? 'disabled' : ''}>${state.pending === 'join' ? 'Finner plassen din …' : 'Bli med på smakingen '+icon('arrow')}</button></form>`}</div><div class="card-footnote">${icon('check')} Ingen konto. Bare godt selskap.</div></section></section><section class="how-it-works" aria-label="Slik fungerer det"><div class="section-intro"><span class="eyebrow">LAV TERSKEL. GOD STEMNING.</span><h2>Fra første skål<br>til kveldens vinner.</h2></div><div class="step"><span class="step-number">01</span><h3>Sett ølene på bordet</h3><p>Legg inn kveldens øl og del koden med gjengen.</p></div><div class="step"><span class="step-number">02</span><h3>Smak og gi poeng</h3><p>Alle gir 1–10 poeng på mobilen. Helt etter egen smak.</p></div><div class="step"><span class="step-number">03</span><h3>Følg spenningen</h3><p>Se hvem som mangler å stemme og hvem som leder på TV-en.</p></div></section>${recent.length ? `<section class="recent-section"><div class="section-title"><h2>Tilbake til bordet</h2><span>På denne enheten</span></div><div class="recent-grid">${recent.filter(item => item && typeof item.code === 'string').map(item => `<a class="recent-card" href="${url(item.role === 'admin' ? 'host' : 'join', item.code)}"><span class="recent-icon">${icon(item.role === 'admin' ? 'beer' : 'users')}</span><span><strong>${esc(item.name)}</strong><small>${esc(item.code)} · ${item.role === 'admin' ? 'Arrangør' : 'Deltaker'}</small></span>${icon('arrow')}</a>`).join('')}</div></section>` : ''}</main>${footer()}`;
+  return `${header()}<main id="main" class="home-main"><section class="hero"><div class="hero-intro"><div class="eyebrow"><span class="tiny-star">${icon('star')}</span> SAMLE GJENGEN. FINN FAVORITTEN.</div><h1>Julens beste øl?<br>Det avgjør <em>dere.</em></h1><p class="hero-description">Noen er mørke. Noen er krydrede. Alle har en mening. Samle vennene til juleølsmaking og la poengene tale.</p><div class="hero-art-wrap">${beerArt()}<div class="art-caption"><span>01 — 10</span><span>Små slurker.<br>Store meninger.</span></div></div></div><section class="start-card" id="start" aria-label="Start eller bli med på en smaking"><div class="card-kicker">DET BEGYNNER RUNDT BORDET</div><h2>Gjør klart for en<br>smakfull kveld.</h2><div class="tabs" role="tablist" aria-label="Velg hvordan du vil bli med"><button id="tab-create" type="button" role="tab" aria-selected="${state.tab === 'create'}" aria-controls="start-form" class="tab ${state.tab === 'create' ? 'active' : ''}" data-action="create-tab">Arranger smaking</button><button id="tab-join" type="button" role="tab" aria-selected="${state.tab === 'join'}" aria-controls="start-form" class="tab ${state.tab === 'join' ? 'active' : ''}" data-action="join-tab">Bli med</button></div><div id="start-form" role="tabpanel" aria-labelledby="tab-${state.tab}">${state.tab === 'create' ? `<form data-form="create" class="stack-form"><label for="session-name">Hva heter smakingen?</label><input id="session-name" name="name" maxlength="80" required placeholder="F.eks. Juleøl hos oss" autocomplete="off"><p class="input-help">Du legger til ølene etterpå. Deltakerne blir med med en kode.</p><button class="button button-primary button-block" ${state.pending ? 'disabled' : ''}>${state.pending === 'create' ? 'Gjør klart …' : 'Opprett smaking '+icon('arrow')}</button></form>` : `<form data-form="join" class="stack-form"><label for="join-code">Kode til smakingen</label><input id="join-code" class="code-input" name="code" maxlength="8" required placeholder="ABC123" value="${esc(code)}" autocapitalize="characters" autocomplete="off" spellcheck="false"><label for="join-name">Navnet ditt</label><input id="join-name" name="name" maxlength="40" required placeholder="F.eks. Nora" autocomplete="given-name"><button class="button button-primary button-block" ${state.pending ? 'disabled' : ''}>${state.pending === 'join' ? 'Finner plassen din …' : 'Bli med på smakingen '+icon('arrow')}</button></form>`}</div><div class="card-footnote">${icon('check')} Ingen konto. Bare godt selskap.</div><a class="text-button host-continue-link" href="${url('host', '')}">Fortsett som arrangør ${icon('arrow')}</a></section></section><section class="how-it-works" aria-label="Slik fungerer det"><div class="section-intro"><span class="eyebrow">LAV TERSKEL. GOD STEMNING.</span><h2>Fra første skål<br>til kveldens vinner.</h2></div><div class="step"><span class="step-number">01</span><h3>Sett ølene på bordet</h3><p>Legg inn kveldens øl og del koden med gjengen.</p></div><div class="step"><span class="step-number">02</span><h3>Smak og gi poeng</h3><p>Alle gir 1–10 poeng på mobilen. Helt etter egen smak.</p></div><div class="step"><span class="step-number">03</span><h3>Følg spenningen</h3><p>Se hvem som mangler å stemme og hvem som leder på TV-en.</p></div></section>${recent.length ? `<section class="recent-section"><div class="section-title"><h2>Tilbake til bordet</h2><span>På denne enheten</span></div><div class="recent-grid">${recent.filter(item => item && typeof item.code === 'string').map(item => `<a class="recent-card" href="${url(item.role === 'admin' ? 'host' : 'join', item.code)}"><span class="recent-icon">${icon(item.role === 'admin' ? 'beer' : 'users')}</span><span><strong>${esc(item.name)}</strong><small>${esc(item.code)} · ${item.role === 'admin' ? 'Arrangør' : 'Deltaker'}</small></span>${icon('arrow')}</a>`).join('')}</div></section>` : ''}</main>${footer()}`;
 }
 
 function qrInvite(isTv = false) {
@@ -141,10 +147,17 @@ function participants(tv = false) {
   const waiting = s.participants.filter(person => !person.hasScored);
   return `<section class="panel people-panel ${tv ? 'tv-people' : ''}"><div class="panel-heading"><div><span class="eyebrow">RUNDT BORDET</span><h2>${active ? 'Vi venter på …' : 'Gjengen'}</h2></div><span class="count-badge">${s.participantCount}</span></div>${!s.participants.length ? `<div class="empty-state compact">${icon('users')}<h3>Plass til hele gjengen</h3><p>Bli med med koden <strong>${esc(s.code)}</strong>.</p></div>` : active ? `<div class="vote-progress"><div><strong>${s.scoredCount} av ${s.participantCount}</strong><span>har gitt poeng</span></div><progress max="${Math.max(s.participantCount, 1)}" value="${s.scoredCount}" aria-label="${s.scoredCount} av ${s.participantCount} har gitt poeng"></progress></div>${!waiting.length ? `<div class="all-done">${icon('check')}<div><strong>Alle har gitt poeng!</strong><p>Klar for neste smak.</p></div></div>` : `<div class="people-list">${waiting.map(person => `<div class="person"><span class="avatar">${esc(person.name.slice(0, 1).toLocaleUpperCase('nb-NO'))}</span><span>${esc(person.name)}</span>${icon('clock')}</div>`).join('')}</div>`}${s.scoredCount ? `<div class="done-people">${icon('check')} ${s.participants.filter(person => person.hasScored).map(person => esc(person.name)).join(', ')} har stemt</div>` : ''}` : `<p class="panel-description">Deltakerne er klare. Arrangøren åpner en smaksrunde.</p><div class="people-list">${s.participants.map(person => `<div class="person"><span class="avatar">${esc(person.name.slice(0, 1).toLocaleUpperCase('nb-NO'))}</span><span>${esc(person.name)}</span><span class="ready-dot" aria-label="Klar"></span></div>`).join('')}</div>`}</section>`;
 }
+function hostAccessPanel() {
+  const formattedCode = state.privateHostCode.replace(/(.{4})(.{4})/, '$1-$2');
+  return `<section class="panel host-access-panel" data-testid="host-access-panel"><div class="host-access-icon">${icon('key')}</div><span class="eyebrow">FORTSETT PÅ EN ANNEN ENHET</span><h2>Flere arrangørenheter</h2><p>Styr smakingen fra mobil, nettbrett eller PC. Bruk smakingens kode og en privat arrangørkode for å logge inn.</p>${formattedCode ? `<div class="private-host-code"><span>PRIVAT ARRANGØRKODE</span><strong data-testid="host-code">${esc(formattedCode)}</strong><button class="text-button" type="button" data-action="copy-host-code">${icon('copy')} Kopier arrangørkode</button></div><p class="host-code-instructions">Åpne <a href="${url('host')}" target="_blank" rel="noopener">arrangørinnloggingen</a> på den andre enheten. Skriv inn <strong>${esc(state.session.code)}</strong> og arrangørkoden over. Ta vare på koden; den vises bare til du laster siden på nytt.</p>` : '<p class="host-code-instructions">Lag koden på en enhet der du allerede er arrangør. Del den med dem som skal hjelpe til å styre smakingen.</p>'}<button class="button button-outline button-block" type="button" data-action="generate-host-code" data-testid="generate-host-code" ${state.pending ? 'disabled' : ''}>${icon('key')} ${state.pending === 'host-code' ? 'Lager arrangørkode …' : formattedCode ? 'Lag ny arrangørkode' : 'Lag arrangørkode'}</button><p class="host-code-note">En ny kode erstatter den gamle. Enheter som er logget inn, beholder tilgangen.</p></section>`;
+}
+function hostLoginForm() {
+  return `${header('<a class="text-button" href="/">'+icon('back')+' Til forsiden</a>')}<main id="main" class="join-main"><section class="join-card panel host-login-card"><div class="join-tree">${icon('key')}</div><span class="eyebrow">SAMME SMAKING. EN NY ENHET.</span><h1>Fortsett som arrangør.</h1><p>Bruk arrangørkoden fra en enhet som allerede styrer smakingen.</p>${state.hostLoginError ? `<div class="host-login-error" role="alert">${esc(state.hostLoginError)}</div>` : ''}<form data-form="host-login" data-testid="host-login-form" class="stack-form"><label for="host-login-code">Kode til smakingen</label><input id="host-login-code" class="code-input" name="code" maxlength="12" value="${esc(code)}" placeholder="ABC123" required autocomplete="username" spellcheck="false" autocapitalize="characters"><label for="host-login-secret">Arrangørkode</label><input id="host-login-secret" class="code-input" type="password" name="hostCode" maxlength="32" placeholder="XXXX-XXXX" required autocomplete="current-password" spellcheck="false" autocapitalize="characters"><p class="input-help">Finn koden under «Flere arrangørenheter» på den opprinnelige arrangørsiden.</p><button class="button button-primary button-block" ${state.pending ? 'disabled' : ''}>${state.pending === 'host-login' ? 'Logger inn …' : 'Logg inn som arrangør '+icon('arrow')}</button></form><a class="text-button host-participant-link" href="${code ? url('join') : '/'}">Skal du bare gi poeng? Bli med som deltaker ${icon('arrow')}</a></section></main>${footer()}`;
+}
 function host() {
   const s = state.session;
   const active = s.beers.find(beer => beer.id === s.activeBeerId);
-  return `${header(`<span class="role-badge">Arrangør</span><a class="button button-small button-outline" href="${url('tv')}" target="_blank" rel="noopener">${icon('tv')} Åpne TV-visning</a>`)}${connection()}<main id="main" class="dashboard"><div class="page-heading"><div><span class="eyebrow">VELKOMMEN TIL BORDET</span><h1>${esc(s.name)}</h1><p>Legg inn ølene, samle gjengen og åpne den første smaksrunden.</p></div><div class="session-code"><span>DEL KODEN MED GJENGEN</span><strong>${esc(s.code)}</strong><button class="text-button" data-action="copy-link">${icon('copy')} Kopier deltakerlenke</button></div></div><div class="host-layout"><div class="main-column"><section class="round-card ${active ? 'is-active' : ''}"><div class="round-icon">${icon('beer')}</div><div class="round-content"><span class="eyebrow">${active ? '<span class="live-dot"></span> SMAKES NÅ' : 'NESTE GODE SMAK'}</span><h2>${active ? esc(active.name) : 'Klar for første skål?'}</h2><p>${active ? meta(active) : 'Legg til ølene under og velg et øl for å åpne poenggivningen.'}</p></div>${active ? `<button class="button button-light" data-action="close-round" ${state.pending ? 'disabled' : ''}>Avslutt runden ${icon('check')}</button>` : ''}</section><section class="panel beer-panel"><div class="panel-heading"><div><span class="eyebrow">PÅ SMAKSMENYEN</span><h2>Kveldens øl <span class="heading-count">${s.beers.length}</span></h2></div></div>${s.beers.length ? `<ol class="beer-list">${s.beers.map(beerRow).join('')}</ol>` : '<div class="empty-state compact"><h3>Et blankt ark. Mange gode smaker.</h3><p>Begynn med å legge til det første ølet.</p></div>'}<form data-form="beer" class="add-beer-form"><h3>${icon('plus')} Legg til et øl</h3><div class="beer-form-grid"><div class="field field-beer"><label for="beer-name">Navn på ølet <span aria-hidden="true">*</span></label><input id="beer-name" name="name" required maxlength="100" placeholder="F.eks. Julebokk" autocomplete="off"></div><div class="field field-brewery"><label for="beer-brewery">Bryggeri <span class="optional">valgfritt</span></label><input id="beer-brewery" name="brewery" maxlength="80" placeholder="F.eks. Aass" autocomplete="off"></div><div class="field field-abv"><label for="beer-abv">Alkohol %</label><input id="beer-abv" name="abv" type="number" step="0.1" min="0" max="100" inputmode="decimal" placeholder="6,5"></div><button class="button button-primary add-beer-button" ${state.pending ? 'disabled' : ''}>${icon('plus')} ${state.pending === 'beer' ? 'Legger til …' : 'Legg til'}</button></div>${newBeerImageField()}</form></section>${leaderboard()}${groupAverages()}</div><aside class="side-column"><section class="panel invitation-panel"><span class="panel-icon">${icon('users')}</span><h2>Smak bedre sammen.</h2><p>Skann QR-koden med mobilkameraet og bli med på denne smakingen.</p>${qrInvite()}<button class="button button-outline button-block" data-action="copy-link">${icon('copy')} Kopier invitasjonslenke</button><a class="text-button" href="${url('join')}" target="_blank" rel="noopener">Bli med selv ${icon('arrow')}</a></section>${participants()}</aside></div><p class="privacy-note">${icon('check')} Smakingen lagres automatisk. ${storageAvailable.persistent ? 'Arrangørtilgangen er lagret i denne nettleseren.' : 'Tilgangen lagres bare i denne fanen. Behold fanen åpen.'}</p></main>${footer()}`;
+  return `${header(`<span class="role-badge">Arrangør</span><a class="button button-small button-outline" href="${url('tv')}" target="_blank" rel="noopener">${icon('tv')} Åpne TV-visning</a>`)}${connection()}<main id="main" class="dashboard"><div class="page-heading"><div><span class="eyebrow">VELKOMMEN TIL BORDET</span><h1>${esc(s.name)}</h1><p>Legg inn ølene, samle gjengen og åpne den første smaksrunden.</p></div><div class="session-code"><span>DEL KODEN MED GJENGEN</span><strong>${esc(s.code)}</strong><button class="text-button" data-action="copy-link">${icon('copy')} Kopier deltakerlenke</button></div></div><div class="host-layout"><div class="main-column"><section class="round-card ${active ? 'is-active' : ''}"><div class="round-icon">${icon('beer')}</div><div class="round-content"><span class="eyebrow">${active ? '<span class="live-dot"></span> SMAKES NÅ' : 'NESTE GODE SMAK'}</span><h2>${active ? esc(active.name) : 'Klar for første skål?'}</h2><p>${active ? meta(active) : 'Legg til ølene under og velg et øl for å åpne poenggivningen.'}</p></div>${active ? `<button class="button button-light" data-action="close-round" ${state.pending ? 'disabled' : ''}>Avslutt runden ${icon('check')}</button>` : ''}</section><section class="panel beer-panel"><div class="panel-heading"><div><span class="eyebrow">PÅ SMAKSMENYEN</span><h2>Kveldens øl <span class="heading-count">${s.beers.length}</span></h2></div></div>${s.beers.length ? `<ol class="beer-list">${s.beers.map(beerRow).join('')}</ol>` : '<div class="empty-state compact"><h3>Et blankt ark. Mange gode smaker.</h3><p>Begynn med å legge til det første ølet.</p></div>'}<form data-form="beer" class="add-beer-form"><h3>${icon('plus')} Legg til et øl</h3><div class="beer-form-grid"><div class="field field-beer"><label for="beer-name">Navn på ølet <span aria-hidden="true">*</span></label><input id="beer-name" name="name" required maxlength="100" placeholder="F.eks. Julebokk" autocomplete="off"></div><div class="field field-brewery"><label for="beer-brewery">Bryggeri <span class="optional">valgfritt</span></label><input id="beer-brewery" name="brewery" maxlength="80" placeholder="F.eks. Aass" autocomplete="off"></div><div class="field field-abv"><label for="beer-abv">Alkohol %</label><input id="beer-abv" name="abv" type="number" step="0.1" min="0" max="100" inputmode="decimal" placeholder="6,5"></div><button class="button button-primary add-beer-button" ${state.pending ? 'disabled' : ''}>${icon('plus')} ${state.pending === 'beer' ? 'Legger til …' : 'Legg til'}</button></div>${newBeerImageField()}</form></section>${leaderboard()}${groupAverages()}</div><aside class="side-column"><section class="panel invitation-panel"><span class="panel-icon">${icon('users')}</span><h2>Smak bedre sammen.</h2><p>Skann QR-koden med mobilkameraet og bli med på denne smakingen.</p>${qrInvite()}<button class="button button-outline button-block" data-action="copy-link">${icon('copy')} Kopier invitasjonslenke</button><a class="text-button" href="${url('join')}" target="_blank" rel="noopener">Bli med selv ${icon('arrow')}</a></section>${hostAccessPanel()}${participants()}</aside></div><p class="privacy-note">${icon('check')} Smakingen lagres automatisk. ${storageAvailable.persistent ? 'Arrangørtilgangen er lagret i denne nettleseren.' : 'Tilgangen lagres bare i denne fanen. Behold fanen åpen.'}</p></main>${footer()}`;
 }
 function joinForm() {
   return `${header('<a class="text-button" href="/">'+icon('back')+' Til forsiden</a>')}<main id="main" class="join-main"><section class="join-card panel"><div class="join-tree">${icon('tree')}</div><span class="eyebrow">DET ER PLASS TIL DEG OGSÅ</span><h1>${state.session ? esc(state.session.name) : 'Bli med rundt bordet.'}</h1><p>Godt øl og gode meninger. Hva skal vi kalle deg?</p><form data-form="join" class="stack-form"><label for="join-code">Kode til smakingen</label><input id="join-code" class="code-input" name="code" maxlength="8" value="${esc(code)}" placeholder="ABC123" required autocomplete="off" spellcheck="false" autocapitalize="characters"><label for="join-name">Navnet ditt</label><input id="join-name" name="name" maxlength="40" placeholder="F.eks. Nora" required autocomplete="given-name"><button class="button button-primary button-block" ${state.pending ? 'disabled' : ''}>${state.pending === 'join' ? 'Finner plassen din …' : 'Sett deg til bords '+icon('arrow')}</button></form></section></main>${footer()}`;
@@ -179,7 +192,7 @@ function render() {
   else if (state.error) app.innerHTML = errorPage();
   else if (view === 'home') app.innerHTML = home();
   else if (view === 'tv') app.innerHTML = tv();
-  else if (view === 'host') app.innerHTML = host();
+  else if (view === 'host') app.innerHTML = state.me?.role === 'admin' ? host() : hostLoginForm();
   else app.innerHTML = state.me?.role === 'participant' ? participant() : joinForm();
   app.querySelectorAll('form input:not([type="file"])').forEach(input => { if (Object.hasOwn(state.drafts, input.id)) input.value = state.drafts[input.id]; });
   if (focused || focusedAction) {
@@ -213,7 +226,7 @@ async function refreshMe() {
   if (!token(role)) { state.me = null; return; }
   const request = ++meRequest;
   try { const me = await api(`/api/sessions/${code}/me`, { role }); if (request === meRequest) state.me = me; }
-  catch (error) { if (error.status === 401 || error.status === 403) { state.me = null; if (view === 'host') throw new Error('Arrangørtilgangen finnes ikke i denne nettleseren. Åpne smakingen på enheten der du opprettet den.'); } else throw error; }
+  catch (error) { if (error.status === 401 || error.status === 403) { state.me = null; if (view === 'host') state.hostLoginError = 'Logg inn med arrangørkoden for å fortsette på denne enheten.'; } else throw error; }
 }
 function subscribe() {
   source?.close();
@@ -243,6 +256,7 @@ function subscribe() {
 }
 async function load() {
   if (view === 'home') { state.loading = false; render(); return; }
+  if (view === 'host' && (!code || !token('admin'))) { state.loading = false; state.me = null; state.error = ''; render(); return; }
   if (!code) { state.loading = false; if (view !== 'join') state.error = 'Legg til en gyldig kode for smakingen.'; render(); return; }
   state.loading = true;
   state.error = '';
@@ -251,9 +265,11 @@ async function load() {
     const data = await api(`/api/sessions/${code}`);
     acceptSession(data.session);
     if (view !== 'tv') await refreshMe();
-    if (view === 'host' && state.me?.role !== 'admin') throw new Error('Arrangørtilgangen finnes ikke i denne nettleseren. Åpne smakingen på enheten der du opprettet den.');
-    subscribe();
-  } catch (error) { state.error = error.message; }
+    if (view !== 'host' || state.me?.role === 'admin') subscribe();
+  } catch (error) {
+    if (view === 'host') { state.me = null; state.hostLoginError = error.message; }
+    else state.error = error.message;
+  }
   finally { state.loading = false; render(); }
 }
 
@@ -324,6 +340,18 @@ document.addEventListener('submit', async event => {
       write(tokenKey('participant', targetCode), result.participantToken);
       remember(targetCode, result.session.name, 'participant');
       location.assign(url('join', targetCode));
+    } else if (type === 'host-login') {
+      requireStorage();
+      state.hostLoginError = '';
+      const targetCode = data.code.toUpperCase().replace(/[\s-]/g, '');
+      const result = await api(`/api/sessions/${encodeURIComponent(targetCode)}/host-login`, { method: 'POST', body: { hostCode: data.hostCode.trim() } });
+      memoryTokens.admin = result.adminToken;
+      write(tokenKey('admin', targetCode), result.adminToken);
+      remember(targetCode, result.session.name, 'admin');
+      state.drafts['host-login-secret'] = '';
+      const secretInput = app.querySelector('#host-login-secret');
+      if (secretInput) secretInput.value = '';
+      location.assign(url('host', targetCode));
     } else if (type === 'beer') {
       const imageFile = state.newBeerImage?.file;
       const result = await api(`/api/sessions/${code}/beers`, { method: 'POST', role: 'admin', body: { name: data.name.trim(), brewery: data.brewery.trim(), abv: data.abv === '' ? null : Number(data.abv) } });
@@ -347,7 +375,10 @@ document.addEventListener('submit', async event => {
       await refreshMe();
       notify(`${score} poeng er lagret. Skål for god smak!`);
     }
-  } catch (error) { notify(error.message, true); }
+  } catch (error) {
+    if (type === 'host-login') state.hostLoginError = error.message;
+    else notify(error.message, true);
+  }
   finally { state.pending = ''; render(); }
 });
 
@@ -366,18 +397,47 @@ document.addEventListener('click', async event => {
   if (action === 'retry') { await load(); return; }
   if (action === 'rate') { state.ratings[state.session.activeBeerId] = Number(button.dataset.score); render(); document.querySelector(`[data-score="${button.dataset.score}"]`)?.focus({ preventScroll: true }); return; }
   if (action === 'fullscreen') { try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); } catch { notify('Fullskjerm støttes ikke i denne nettleseren.'); } return; }
-  if (action === 'copy-link') {
-    const link = new URL(url('join', state.session.code), location.origin).href;
-    try { await navigator.clipboard.writeText(link); notify('Invitasjonslenken er kopiert. Send den til gjengen!'); }
+  if (action === 'copy-link' || action === 'copy-host-code') {
+    if (action === 'copy-host-code' && (view !== 'host' || state.me?.role !== 'admin' || !state.privateHostCode)) return;
+    const isHostCode = action === 'copy-host-code';
+    const copiedHostGeneration = state.privateHostCodeGeneration;
+    const link = isHostCode ? state.privateHostCode.replace(/(.{4})(.{4})/, '$1-$2') : new URL(url('join', state.session.code), location.origin).href;
+    const hostCodeChanged = () => isHostCode && (copiedHostGeneration !== state.session?.hostCodeGeneration || !state.privateHostCode);
+    try {
+      await navigator.clipboard.writeText(link);
+      if (hostCodeChanged()) { notify('Arrangørkoden er endret. Lag en ny kode før du deler den.', true); return; }
+      notify(isHostCode ? 'Arrangørkoden er kopiert.' : 'Invitasjonslenken er kopiert. Send den til gjengen!');
+    }
     catch {
+      if (hostCodeChanged()) { notify('Arrangørkoden er endret. Lag en ny kode før du deler den.', true); return; }
       const input = document.createElement('textarea'); input.value = link; input.className = 'clipboard-fallback'; document.body.append(input); input.select();
       const copied = document.execCommand('copy'); input.remove();
-      if (copied) notify('Invitasjonslenken er kopiert.');
-      else { notify('Kopier lenken fra feltet nedenfor.', true); const area = document.querySelector('#notifications .toast'); const manual = document.createElement('input'); manual.value = link; manual.readOnly = true; manual.setAttribute('aria-label', 'Invitasjonslenke'); area.append(manual); manual.select(); clearTimeout(toastTimer); }
+      if (copied) notify(isHostCode ? 'Arrangørkoden er kopiert.' : 'Invitasjonslenken er kopiert.');
+      else { notify(isHostCode ? 'Kopier arrangørkoden fra feltet nedenfor.' : 'Kopier lenken fra feltet nedenfor.', true); const area = document.querySelector('#notifications .toast'); const manual = document.createElement('input'); manual.value = link; manual.readOnly = true; manual.setAttribute('aria-label', isHostCode ? 'Arrangørkode' : 'Invitasjonslenke'); if (isHostCode) manual.setAttribute('data-private-host-code-copy', ''); area.append(manual); manual.select(); clearTimeout(toastTimer); }
     }
     return;
   }
   if (state.pending) return;
+  if (action === 'generate-host-code') {
+    if (view !== 'host' || state.me?.role !== 'admin') return;
+    state.pending = 'host-code';
+    render();
+    try {
+      const result = await api(`/api/sessions/${code}/host-code`, { method: 'POST', role: 'admin' });
+      acceptSession(result.session);
+      if (result.session.hostCodeGeneration === state.session.hostCodeGeneration) {
+        state.privateHostCode = result.hostCode;
+        state.privateHostCodeGeneration = result.session.hostCodeGeneration;
+        notify('Arrangørkoden er klar. Bruk den på den andre enheten.');
+      } else {
+        state.privateHostCode = '';
+        state.privateHostCodeGeneration = null;
+        notify('En annen arrangør har laget en nyere kode. Lag en ny kode ved behov.');
+      }
+    } catch (error) { notify(error.message, true); }
+    finally { state.pending = ''; render(); }
+    return;
+  }
   if (action === 'take-new-image') { document.querySelector('#new-beer-camera')?.click(); return; }
   if (action === 'take-beer-image') { document.getElementById(`beer-camera-${button.dataset.id}`)?.click(); return; }
   if (action === 'choose-new-image') { document.querySelector('#new-beer-image')?.click(); return; }

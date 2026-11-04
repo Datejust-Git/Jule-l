@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Datejust Juleølsmaking
  * Description: Egen juleølapp med mobilpoeng, QR-kode og TV-visning på /juleolsmaking/. Ingen meny- eller temaendringer.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Kennel Datejust
@@ -30,7 +30,7 @@ final class Datejust_Juleol_App {
     }
     public static function routes() {
         foreach (array('/health', '/sessions', '/sessions/(?P<code>[A-Za-z0-9]{6})',
-            '/sessions/(?P<code>[A-Za-z0-9]{6})/(?P<action>me|join|beers|round|scores)',
+            '/sessions/(?P<code>[A-Za-z0-9]{6})/(?P<action>me|join|beers|round|scores|host-code|host-login)',
             '/sessions/(?P<code>[A-Za-z0-9]{6})/beers/(?P<beer>[a-f0-9]{32})',
             '/sessions/(?P<code>[A-Za-z0-9]{6})/beers/(?P<beer>[a-f0-9]{32})/(?P<image>image)',
             '/sessions/(?P<code>[A-Za-z0-9]{6})/round/(?P<close>close)') as $route) {
@@ -91,11 +91,20 @@ final class Datejust_Juleol_App {
                     if ($method === 'POST' && $req['image']) { $action = 'image'; }
                     elseif ($method === 'DELETE' && $req['beer'] && !$req['image']) { $action = 'delete'; }
                     elseif ($method === 'POST' && $req['close']) { $action = 'close'; }
-                    elseif ($method !== 'POST' || !in_array($action, array('join', 'beers', 'round', 'scores'), true)) { throw new Datejust_Juleol_Error(405, 'Metoden støttes ikke.'); }
-                    self::rate($action, $action === 'join' ? 120 : 600, $action === 'join' ? 900 : 60);
+                    elseif ($method !== 'POST' || !in_array($action, array('join', 'beers', 'round', 'scores', 'host-code', 'host-login'), true)) { throw new Datejust_Juleol_Error(405, 'Metoden støttes ikke.'); }
+                    if ($action === 'host-login') {
+                        self::rate('host-login-global', 60, 900);
+                        self::rate('host-login:' . $code, 10, 900);
+                    } elseif ($action !== 'host-code') {
+                        self::rate($action, $action === 'join' ? 120 : 600, $action === 'join' ? 900 : 60);
+                    }
                     if ($wpdb->query('START TRANSACTION') === false) { throw new RuntimeException('Kunne ikke starte lagring.'); }
                     $transaction = true;
                     $data = self::data($code, true);
+                    if ($action === 'host-code') {
+                        if (Datejust_Juleol_Domain::me($data, $token)['role'] !== 'admin') { throw new Datejust_Juleol_Error(403, 'Bare arrangøren kan gjøre dette.'); }
+                        self::rate('host-code:' . $code, 20, 3600);
+                    }
                     if ($action === 'image') {
                         if (Datejust_Juleol_Domain::me($data, $token)['role'] !== 'admin') { throw new Datejust_Juleol_Error(403, 'Bare arrangøren kan laste opp bilder.'); }
                         $exists = false;
@@ -152,7 +161,7 @@ final class Datejust_Juleol_App {
         $assets = plugins_url('assets/', __FILE__);
         $html = file_get_contents(__DIR__ . '/assets/index.html');
         $html = str_replace(array('href="/favicon.svg"', 'href="/styles.css"', 'src="/app.js"'),
-            array('href="' . esc_url($assets . 'favicon.svg') . '"', 'href="' . esc_url($assets . 'styles.css?ver=1.2.0') . '"', 'src="' . esc_url($assets . 'app.js?ver=1.2.0') . '"'), $html);
+            array('href="' . esc_url($assets . 'favicon.svg') . '"', 'href="' . esc_url($assets . 'styles.css?ver=1.3.0') . '"', 'src="' . esc_url($assets . 'app.js?ver=1.3.0') . '"'), $html);
         $config = array('base' => home_url('/juleolsmaking/'), 'api' => untrailingslashit(rest_url(self::NS)));
         $scripts = '<script nonce="' . esc_attr($nonce) . '">window.DATEJUST_JULEOL=' . wp_json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
         $scripts .= '<script src="' . esc_url($assets . 'qrcode.js') . '"></script>';

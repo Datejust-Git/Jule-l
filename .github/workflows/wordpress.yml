@@ -7,6 +7,7 @@ on:
       - 'test/wordpress-domain.test.php'
       - 'test/wordpress-upload.test.php'
       - 'test/wordpress-averages.test.php'
+      - 'test/wordpress-host-access.test.php'
       - 'scripts/build-wordpress.mjs'
       - '.github/workflows/wordpress.yml'
   pull_request:
@@ -16,6 +17,7 @@ on:
       - 'test/wordpress-domain.test.php'
       - 'test/wordpress-upload.test.php'
       - 'test/wordpress-averages.test.php'
+      - 'test/wordpress-host-access.test.php'
       - 'scripts/build-wordpress.mjs'
       - '.github/workflows/wordpress.yml'
 permissions:
@@ -33,6 +35,8 @@ jobs:
         run: php test/wordpress-upload.test.php
       - name: Test participant and group evening averages
         run: php test/wordpress-averages.test.php
+      - name: Test organizer access from multiple devices
+        run: php test/wordpress-host-access.test.php
       - name: Validate frontend syntax
         run: node --check wordpress/datejust-juleol/assets/app.js
       - name: Verify shared frontend assets are up to date

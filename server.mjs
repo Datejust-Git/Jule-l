@@ -209,7 +209,16 @@ export function createApp(options = {}) {
         }
         let result;
         let status = 200;
-        if (req.method === 'POST' && action === 'join' && parts.length === 4) {
+        if (req.method === 'POST' && action === 'host-code' && parts.length === 4) {
+          const identity = store.authenticate(code, supplied);
+          if (identity.role !== 'admin') throw new AppError(403, 'Bare arrangøren kan gjøre dette.');
+          rateLimit(req, `host-code:${code}`, 20, 3_600_000);
+          result = store.generateHostCode(code, supplied);
+        } else if (req.method === 'POST' && action === 'host-login' && parts.length === 4) {
+          rateLimit(req, 'host-login', 60, 900_000);
+          rateLimit(req, `host-login:${code}`, 10, 900_000);
+          result = store.hostLogin(code, await body(req));
+        } else if (req.method === 'POST' && action === 'join' && parts.length === 4) {
           rateLimit(req, 'join', 120, 900_000);
           result = store.join(code, await body(req));
           status = 201;
